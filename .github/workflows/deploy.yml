@@ -24,16 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - name: Install dependencies
-        run: npm install
+        run: npm install --package-lock-only && npm ci
 
       - name: Build
-        run: npm run build
+        run: npm vite build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
