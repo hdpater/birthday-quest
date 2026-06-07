@@ -27,8 +27,10 @@ jobs:
       - name: Install dependencies
         run: npm install --package-lock-only && npm ci
 
-      - name: Build
-        run: npm vite build
+      - name: Install and build
+        run: |
+          npm install
+          ./node_modules/.bin/vite build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
