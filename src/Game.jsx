@@ -204,7 +204,7 @@ function doEquipWeapon(item, eq) {
 // ── Colour palette ────────────────────────────────────────────────────────────
 const C={bg:"#0d1117",panel:"#1a1510",border:"#3d2f18",gold:"#c9a84c",text:"#e8dcc8",dim:"#7a6a4a",red:"#c0392b",green:"#2d8a4e",blue:"#2e6da4"};
 const BIOME_COL={f:"#2d6a27",p:"#8b6914",d:"#d4a843",s:"#1a4e8a"};
-const BIOME_RGB={f:[45,106,39],p:[139,105,20],d:[212,168,67],s:[26,78,138]};
+const BIOME_RGB={f:[45,106,39],p:[171,201,84],d:[212,168,67],s:[26,78,138]};
 const BIOME_LABEL={f:"Forest",p:"Plains",d:"Desert",s:"Sea"};
 const btnS=(col,dis)=>({padding:"6px 14px",background:"transparent",border:`1.5px solid ${dis?"#333":col}`,color:dis?"#444":col,fontFamily:"'Palatino Linotype',Palatino,serif",fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",cursor:dis?"not-allowed":"pointer",borderRadius:3,transition:"background 0.15s"});
 
@@ -1307,88 +1307,160 @@ export default function Game(){
   const drawCanvas = useCallback((hx,hy,tgt,defeated,fading)=>{
     const canvas=canvasRef.current; if(!canvas) return;
     const ctx=canvas.getContext("2d");
-    const HALF=Math.floor(VIEW/2); // 30 for VIEW=61
+    const HALF=Math.floor(VIEW/2);
     const C2=CELL_PX/2;
+    const S=CELL_PX; // cell size alias
 
-    // Draw VIEW x VIEW cells centred on hero
-    // Pre-compute a tiny pseudo-noise for biome variation (fast, no import needed)
+    // Fast deterministic noise: returns 0..1
     const pnoise=(x,y)=>{
       const h=(x*374761393+y*668265263)^((x*668265263)+(y*374761393));
       return ((h^(h>>13))*1274126177&0x7fffffff)/0x7fffffff;
     };
+    // Second noise layer for detail
+    const pnoise2=(x,y)=>{
+      const h=(x*1013904223+y*1664525)^((y*1013904223)+(x*22695477));
+      return ((h^(h>>15))*214013&0x7fffffff)/0x7fffffff;
+    };
+
+    // ── Terrain ──────────────────────────────────────────────────────────────
+    // Strategy: compute interpolated RGB for each cell by averaging a neighbourhood
+    // weighted by a Gaussian kernel — this blends biome colours at boundaries.
+    // Then apply ctx.filter blur for additional sub-cell softening.
+
+    // Gaussian kernel radius in world cells (controls biome blend distance)
+    const KERN=2; // samples ±2 cells → 5x5 kernel, smooth transitions
+    const gaussW=(d2)=>Math.exp(-d2/(2*1.2*1.2)); // sigma=1.2 cells
+
+    // Helper: get raw biome RGB for a world cell (with noise + gradient)
+    const rawRGB=(wx,wy)=>{
+      if(wx<0||wy<0||wx>=SIZE||wy>=SIZE) return [26,78,138]; // sea
+      const b=biomeAt(wx,wy);
+      const base=BIOME_RGB[b]||[26,78,138];
+      let r=base[0],g=base[1],bl=base[2];
+      const n=(pnoise(wx,wy)-0.5)*22+(pnoise2(wx,wy)-0.5)*10;
+      r=Math.round(r+n); g=Math.round(g+n*0.75); bl=Math.round(bl+n*0.55);
+
+      if(PATHWAY[wy*SIZE+wx]){
+        r=Math.round(r*0.35+80*0.65);
+        g=Math.round(g*0.35+70*0.65);
+        bl=Math.round(bl*0.35+50*0.65);
+      }
+      return [Math.min(255,Math.max(0,r)),Math.min(255,Math.max(0,g)),Math.min(255,Math.max(0,bl))];
+    };
+
+    // Draw blended cells to offscreen canvas, then blur further for sub-cell softness
+    const offscreen=document.createElement('canvas');
+    offscreen.width=VIEW*S; offscreen.height=VIEW*S;
+    const off=offscreen.getContext('2d');
+
     for(let vy=0;vy<VIEW;vy++){
       for(let vx=0;vx<VIEW;vx++){
         const wx=hx-HALF+vx, wy=hy-HALF+vy;
-        const px=vx*CELL_PX, py=vy*CELL_PX;
-        let r=26,g=78,bl=138;
-        if(wx>=0&&wy>=0&&wx<SIZE&&wy<SIZE){
-          const b=biomeAt(wx,wy);
-          const base=BIOME_RGB[b]||[26,78,138];
-          r=base[0]; g=base[1]; bl=base[2];
-
-          // Biome variation: gentle per-cell noise ±12
-          const n=(pnoise(wx,wy)-0.5)*24;
-          r=Math.round(r+n); g=Math.round(g+n*0.8); bl=Math.round(bl+n*0.6);
-
-          // Bottom-right gradient: redder and darker toward (SIZE,SIZE)
-          const grad=((wx+wy)/(SIZE*2));  // 0 top-left → 1 bottom-right
-          r=Math.round(r*(1-grad*0.25)+r*grad*1.15);
-          g=Math.round(g*(1-grad*0.30));
-          bl=Math.round(bl*(1-grad*0.35));
-
-          // Pathway overlay: light grey-beige
-          if(PATHWAY[wy*SIZE+wx]){
-            r=Math.round(r*0.45+185*0.55);
-            g=Math.round(g*0.45+178*0.55);
-            bl=Math.round(bl*0.45+158*0.55);
+        // Gaussian-weighted average of neighbourhood colours
+        let sr=0,sg=0,sb=0,sw=0;
+        for(let dy=-KERN;dy<=KERN;dy++){
+          for(let dx=-KERN;dx<=KERN;dx++){
+            const w=gaussW(dx*dx+dy*dy);
+            const [r,g,bl]=rawRGB(wx+dx,wy+dy);
+            sr+=r*w; sg+=g*w; sb+=bl*w; sw+=w;
           }
         }
-        ctx.fillStyle=`rgb(${Math.min(255,Math.max(0,r))},${Math.min(255,Math.max(0,g))},${Math.min(255,Math.max(0,bl))})`;
-        ctx.fillRect(px,py,CELL_PX,CELL_PX);
+        const fr=Math.round(sr/sw), fg=Math.round(sg/sw), fb=Math.round(sb/sw);
+        off.fillStyle=`rgb(${fr},${fg},${fb})`;
+        off.fillRect(vx*S, vy*S, S, S);
+      }
+    }
+
+    // Additional ctx.filter blur for intra-cell softening (bigger radius = smoother)
+    const blurPx=Math.round(S*1.1);
+    ctx.filter=`blur(${blurPx}px)`;
+    ctx.drawImage(offscreen,0,0);
+    ctx.filter='none';
+
+    // Pass 2: sub-cell texture blobs — 10-15 per cell
+    for(let vy=0;vy<VIEW;vy++){
+      for(let vx=0;vx<VIEW;vx++){
+        const wx=hx-HALF+vx, wy=hy-HALF+vy;
+        if(wx<0||wy<0||wx>=SIZE||wy>=SIZE) continue;
+        if(biomeAt(wx,wy)==='s') continue;
+        const px=vx*S, py=vy*S;
+        const blobCount=10+((pnoise(wx*3,wy*7)*5)|0);
+        for(let i=0;i<blobCount;i++){
+          const ox=px+pnoise(wx+i*17,wy+i*3)*S;
+          const oy=py+pnoise(wx+i*5, wy+i*13)*S;
+          const rad=0.8+pnoise(wx+i*11,wy+i*7)*2.5;
+          const alpha=0.05+pnoise(wx+i*19,wy+i*23)*0.09;
+          const light=pnoise(wx+i*29,wy+i*31)>0.5;
+          ctx.globalAlpha=alpha;
+          ctx.fillStyle=light?"#ffffff":"#000000";
+          ctx.beginPath(); ctx.arc(ox,oy,rad,0,Math.PI*2); ctx.fill();
+        }
+        ctx.globalAlpha=1;
       }
     }
 
     ctx.textAlign="center"; ctx.textBaseline="middle";
-    const fontSize=Math.max(8,CELL_PX-4);
-
-    // Helper: world→viewport pixel centre
-    const vp=(wx,wy)=>[(wx-(hx-HALF))*CELL_PX+C2, (wy-(hy-HALF))*CELL_PX+C2];
+    const vp=(wx,wy)=>[(wx-(hx-HALF))*S+C2,(wy-(hy-HALF))*S+C2];
     const inView=(wx,wy)=>wx>=hx-HALF&&wx<=hx+HALF&&wy>=hy-HALF&&wy<=hy+HALF;
+    const R=S*1.4; // icon radius — spans ~3 cells visually
 
-    // Buildings
+    // ── Buildings (3×3 display) ───────────────────────────────────────────────
     const bldIcon={tavern:"🍺",armourer:"⚔",magic:"✦",castle:"🏰",arena:"🏟"};
     for(const b of BUILDINGS){
       if(!inView(b.x,b.y)) continue;
       const [px,py]=vp(b.x,b.y);
-      ctx.fillStyle=b.color+"cc";
-      ctx.beginPath(); ctx.arc(px,py,C2*1.1,0,Math.PI*2); ctx.fill();
-      ctx.font=`bold ${fontSize}px serif`;
+      // Glow halo
+      const grd=ctx.createRadialGradient(px,py,R*0.3,px,py,R);
+      grd.addColorStop(0,b.color+"99"); grd.addColorStop(1,b.color+"00");
+      ctx.fillStyle=grd;
+      ctx.beginPath(); ctx.arc(px,py,R,0,Math.PI*2); ctx.fill();
+      // Icon circle
+      ctx.fillStyle=b.color+"dd";
+      ctx.beginPath(); ctx.arc(px,py,R*0.62,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="#ffffff55"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(px,py,R*0.62,0,Math.PI*2); ctx.stroke();
+      ctx.font=`bold ${Math.round(S*1.1)}px serif`;
       ctx.fillStyle="#fff";
-      ctx.fillText(bldIcon[b.type]||"?",px,py+0.5);
+      ctx.fillText(bldIcon[b.type]||"?",px,py+1);
     }
 
-    // Guardians — eye icon
+    // ── Guardians (3×3 display) ───────────────────────────────────────────────
     for(const g of GUARDIANS){
       if(defeated?.has(g.id)||!inView(g.x,g.y)) continue;
       const isFading=fading===g.id;
       const [px,py]=vp(g.x,g.y);
-      ctx.globalAlpha=isFading?0.15:1;
-      ctx.fillStyle=isFading?"#ff8800dd":"#9b2335dd";
-      ctx.beginPath(); ctx.arc(px,py,C2*1.15,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=isFading?0.12:1;
+      // Outer glow
+      const gg=ctx.createRadialGradient(px,py,R*0.2,px,py,R);
+      gg.addColorStop(0,"#9b233599"); gg.addColorStop(1,"#9b233500");
+      ctx.fillStyle=gg;
+      ctx.beginPath(); ctx.arc(px,py,R,0,Math.PI*2); ctx.fill();
+      // Iris
+      ctx.fillStyle=isFading?"#ff8800cc":"#9b2335cc";
+      ctx.beginPath(); ctx.arc(px,py,R*0.58,0,Math.PI*2); ctx.fill();
+      // White of eye
       ctx.fillStyle="#ffffffee";
-      ctx.beginPath(); ctx.ellipse(px,py,C2*0.7,C2*0.45,0,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle=isFading?"#ff8800":"#1a0a0a";
-      ctx.beginPath(); ctx.arc(px,py,C2*0.28,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(px,py,R*0.45,R*0.30,0,0,Math.PI*2); ctx.fill();
+      // Pupil
+      ctx.fillStyle=isFading?"#ff8800":"#0a0505";
+      ctx.beginPath(); ctx.arc(px,py,R*0.18,0,Math.PI*2); ctx.fill();
+      // Highlight
       ctx.fillStyle="#ffffff";
-      ctx.beginPath(); ctx.arc(px-C2*0.1,py-C2*0.1,C2*0.1,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px-R*0.07,py-R*0.07,R*0.07,0,Math.PI*2); ctx.fill();
       ctx.globalAlpha=1;
     }
 
-    // Dragon — starburst
+    // ── Dragon (3×3 starburst) ────────────────────────────────────────────────
     if(inView(DRAGON_POS.x,DRAGON_POS.y)){
       const [px,py]=vp(DRAGON_POS.x,DRAGON_POS.y);
-      const spikes=6,outerR=C2*1.3,innerR=C2*0.6;
-      ctx.fillStyle="#ff6b00"; ctx.strokeStyle="#ffcc00"; ctx.lineWidth=0.8;
+      const spikes=8,outerR=R*0.95,innerR=R*0.40;
+      // Glow
+      const dg=ctx.createRadialGradient(px,py,innerR,px,py,outerR*1.2);
+      dg.addColorStop(0,"#ff6b0088"); dg.addColorStop(1,"#ff6b0000");
+      ctx.fillStyle=dg;
+      ctx.beginPath(); ctx.arc(px,py,outerR*1.2,0,Math.PI*2); ctx.fill();
+      // Starburst
+      ctx.fillStyle="#ff6b00"; ctx.strokeStyle="#ffcc00"; ctx.lineWidth=1;
       ctx.beginPath();
       for(let i=0;i<spikes*2;i++){
         const r2=i%2===0?outerR:innerR;
@@ -1397,25 +1469,89 @@ export default function Game(){
              :ctx.lineTo(px+r2*Math.cos(a),py+r2*Math.sin(a));
       }
       ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Centre orb
       ctx.fillStyle="#ffee55";
-      ctx.beginPath(); ctx.arc(px,py,C2*0.45,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(px,py,R*0.28,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#ff9900";
+      ctx.beginPath(); ctx.arc(px,py,R*0.14,0,Math.PI*2); ctx.fill();
     }
 
-    // Target highlight
+    // ── Target highlight ──────────────────────────────────────────────────────
     if(tgt&&inView(tgt.x,tgt.y)){
       const [px,py]=vp(tgt.x,tgt.y);
-      ctx.strokeStyle="#ffffff99"; ctx.lineWidth=1;
-      ctx.strokeRect(px-C2,py-C2,CELL_PX,CELL_PX);
+      ctx.strokeStyle="#ffffff88"; ctx.lineWidth=1;
+      ctx.strokeRect(px-C2+0.5,py-C2+0.5,S-1,S-1);
+      ctx.strokeStyle="#ffffff33"; ctx.lineWidth=1;
+      ctx.strokeRect(px-C2-0.5,py-C2-0.5,S+1,S+1);
     }
 
-    // Hero — always centre of viewport
+    // ── Hero (humanoid figure, 2.2× cell) ────────────────────────────────────
     {
       const [px,py]=vp(hx,hy);
-      ctx.fillStyle="#111111"; ctx.strokeStyle="#ffffff"; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.arc(px,py,C2*1.15,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle="#ffffff99"; ctx.lineWidth=0.8;
-      ctx.beginPath(); ctx.moveTo(px-C2*0.5,py); ctx.lineTo(px+C2*0.5,py); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(px,py-C2*0.5); ctx.lineTo(px,py+C2*0.5); ctx.stroke();
+      const sc=S*0.52; // scale factor
+      ctx.save();
+
+      // Shadow
+      ctx.fillStyle="rgba(0,0,0,0.35)";
+      ctx.beginPath(); ctx.ellipse(px,py+sc*1.1,sc*0.55,sc*0.18,0,0,Math.PI*2); ctx.fill();
+
+      // Legs
+      ctx.strokeStyle="#3a2a6a"; ctx.lineWidth=sc*0.28; ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(px-sc*0.18,py+sc*0.35); ctx.lineTo(px-sc*0.22,py+sc*0.95); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px+sc*0.18,py+sc*0.35); ctx.lineTo(px+sc*0.22,py+sc*0.95); ctx.stroke();
+      // Boots
+      ctx.strokeStyle="#1a1008"; ctx.lineWidth=sc*0.22;
+      ctx.beginPath(); ctx.moveTo(px-sc*0.22,py+sc*0.9); ctx.lineTo(px-sc*0.38,py+sc*0.95); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px+sc*0.22,py+sc*0.9); ctx.lineTo(px+sc*0.38,py+sc*0.95); ctx.stroke();
+
+      // Cloak / body
+      const cloakGrad=ctx.createLinearGradient(px-sc*0.45,py-sc*0.1,px+sc*0.45,py+sc*0.4);
+      cloakGrad.addColorStop(0,"#4a2a8a"); cloakGrad.addColorStop(1,"#2a1050");
+      ctx.fillStyle=cloakGrad;
+      ctx.beginPath();
+      ctx.moveTo(px-sc*0.12,py-sc*0.1);
+      ctx.lineTo(px-sc*0.45,py+sc*0.5);
+      ctx.lineTo(px+sc*0.45,py+sc*0.5);
+      ctx.lineTo(px+sc*0.12,py-sc*0.1);
+      ctx.closePath(); ctx.fill();
+
+      // Arms
+      ctx.strokeStyle="#4a2a8a"; ctx.lineWidth=sc*0.22; ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(px-sc*0.12,py+sc*0.05); ctx.lineTo(px-sc*0.52,py+sc*0.3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px+sc*0.12,py+sc*0.05); ctx.lineTo(px+sc*0.52,py+sc*0.3); ctx.stroke();
+      // Sword in right hand
+      ctx.strokeStyle="#c0c0d0"; ctx.lineWidth=sc*0.1;
+      ctx.beginPath(); ctx.moveTo(px+sc*0.52,py+sc*0.3); ctx.lineTo(px+sc*0.72,py-sc*0.15); ctx.stroke();
+      ctx.strokeStyle="#8a6a20"; ctx.lineWidth=sc*0.18;
+      ctx.beginPath(); ctx.moveTo(px+sc*0.44,py+sc*0.42); ctx.lineTo(px+sc*0.62,py+sc*0.28); ctx.stroke();
+
+      // Neck
+      ctx.fillStyle="#d4a574";
+      ctx.beginPath(); ctx.arc(px,py-sc*0.12,sc*0.12,0,Math.PI*2); ctx.fill();
+
+      // Head
+      const headGrad=ctx.createRadialGradient(px-sc*0.08,py-sc*0.42,sc*0.05,px,py-sc*0.38,sc*0.28);
+      headGrad.addColorStop(0,"#e8c090"); headGrad.addColorStop(1,"#c4885c");
+      ctx.fillStyle=headGrad;
+      ctx.beginPath(); ctx.arc(px,py-sc*0.38,sc*0.26,0,Math.PI*2); ctx.fill();
+
+      // Helmet
+      const helmGrad=ctx.createLinearGradient(px-sc*0.28,py-sc*0.72,px+sc*0.28,py-sc*0.38);
+      helmGrad.addColorStop(0,"#d0d8e8"); helmGrad.addColorStop(1,"#708090");
+      ctx.fillStyle=helmGrad;
+      ctx.beginPath();
+      ctx.arc(px,py-sc*0.42,sc*0.28,Math.PI,0); // dome
+      ctx.lineTo(px+sc*0.32,py-sc*0.38);
+      ctx.lineTo(px-sc*0.32,py-sc*0.38);
+      ctx.closePath(); ctx.fill();
+      // Visor
+      ctx.strokeStyle="#50607080"; ctx.lineWidth=sc*0.06;
+      ctx.beginPath(); ctx.moveTo(px-sc*0.18,py-sc*0.38); ctx.lineTo(px+sc*0.18,py-sc*0.38); ctx.stroke();
+      // Plume
+      ctx.strokeStyle="#cc2233"; ctx.lineWidth=sc*0.12; ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(px,py-sc*0.68); ctx.quadraticCurveTo(px+sc*0.25,py-sc*0.82,px+sc*0.18,py-sc*0.55); ctx.stroke();
+
+      ctx.restore();
     }
   },[]);
 
