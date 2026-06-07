@@ -10,3 +10,4 @@
 
 > If your repo is named something other than `birthday-quest`,
 > edit `vite.config.js` and change `base: '/birthday-quest/'` to match.
+ 
