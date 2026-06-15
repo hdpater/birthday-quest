@@ -60,6 +60,7 @@ const GUARDIANS = [
   {id:"sea_golem",   name:"Sea Golem",     col:2,row:1,x:224,y:242},
   {id:"mermaid",     name:"Mermaid",       col:3,row:1,x:17,y:40},
 ];
+const TOURNAMENT_IMG = DRAGON_IMG;
 const TOURNAMENT_FIGHTERS = [
   {id:"thruk",     name:"Thruk",                col:0, row:0, candles:2,
    strength:80, skill:62, armour:22, health:100, attacks:1, twoHanded:true,
@@ -483,7 +484,7 @@ function TournamentEncounter({defeatedTournament,setDefeatedTournament,
           </div>}
           {phase==="victory"&&<div>
             <div style={{color:"#6fcf97",fontSize:13,marginBottom:10}}>
-              🏆 Victory! +{fighter.candles} candles{fighter.loot?` · ${fighter.loot.name} added to inventory`:""}.</div>
+              🏆 Victory! +{fighter.candles} candles{fighter.loot?.length?` · Found: ${fighter.loot.map(i=>i.name).join(", ")}`:""}.</div>
             <button style={btnS2("#c9a84c",false)} onClick={onDismiss}>Continue</button>
           </div>}
           {phase==="dead"&&<div>
