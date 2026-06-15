@@ -678,24 +678,29 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
 
   const useWand=(wand)=>{
     const comps=MAGIC_COMPS[wand.magicType]||[];
-    let m={...mon};
     const lines=[];
-    if(comps.includes("fire")){const d=rng(1,5);m.health=Math.max(0,m.health-d);lines.push(`${wand.name}: ${d} fire dmg.`);}
-    if(comps.includes("lightning")){const d=rng(1,3);m.skill=Math.max(1,m.skill-d);lines.push(`${wand.name}: -${d} monster skill.`);}
-    if(comps.includes("iron")){const d=rng(1,3);m.strength=Math.max(1,m.strength-d);lines.push(`${wand.name}: -${d} monster strength.`);}
-    setMon(m);
-    // Uses: first 5 are free; after that 50% chance to lose power each use
-    const uses=(wand.uses||0)+1;
-    const breaks=uses>5&&Math.random()<0.5;
-    if(breaks){
-      setHeroState(h=>({...h,inventory:h.inventory.filter(i=>i.uid!==wand.uid)}));
-      lines.push(`${wand.name} sputters and loses its power!`);
-    } else {
-      setHeroState(h=>({...h,inventory:h.inventory.map(i=>i.uid===wand.uid?{...i,uses}:i)}));
+    let wonCombat=false;
+    setMon(prev=>{
+      let m={...prev};
+      if(comps.includes("fire")){const d=rng(1,5);m.health=Math.max(0,m.health-d);lines.push(`${wand.name}: ${d} fire dmg.`);}
+      if(comps.includes("lightning")){const d=rng(1,3);m.skill=Math.max(1,m.skill-d);lines.push(`${wand.name}: -${d} monster skill.`);}
+      if(comps.includes("iron")){const d=rng(1,3);m.strength=Math.max(1,m.strength-d);lines.push(`${wand.name}: -${d} monster strength.`);}
+      if(m.health<=0) wonCombat=true;
+      return m;
+    });
+    setHeroState(h=>{
+      const current=h.inventory.find(i=>i.uid===wand.uid);
+      if(!current) return h;
+      const uses=(current.uses||0)+1;
+      const breaks=uses>5&&Math.random()<0.5;
+      if(breaks){
+        lines.push(`${wand.name} sputters and loses its power!`);
+        return {...h,inventory:h.inventory.filter(i=>i.uid!==wand.uid)};
+      }
       if(uses===5) lines.push(`${wand.name} flickers — further uses may destroy it.`);
-    }
-    lines.forEach(addCombatLog);
-    if(m.health<=0) endCombat("won");
+      return {...h,inventory:h.inventory.map(i=>i.uid===wand.uid?{...i,uses}:i)};
+    });
+    setTimeout(()=>{lines.forEach(addCombatLog);if(wonCombat)endCombat("won");},0);
   };
 
   const usePotion=(pot)=>{
