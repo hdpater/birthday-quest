@@ -60,6 +60,33 @@ const GUARDIANS = [
   {id:"sea_golem",   name:"Sea Golem",     col:2,row:1,x:224,y:242},
   {id:"mermaid",     name:"Mermaid",       col:3,row:1,x:17,y:40},
 ];
+const TOURNAMENT_FIGHTERS = [
+  {id:"thruk",     name:"Thruk",                col:0, row:0, candles:2,
+   strength:80, skill:62, armour:22, health:100, attacks:1, twoHanded:true,
+   dialogue:"THRUK CRUSH YOU LIKE INSECT!",
+   loot:[{name:"Helmet of Thruk",slot:"head",armourBonus:8,type:"armour",
+          strBonus:5,uid:"thruk_helm"}]},
+  {id:"kenshiro", name:"Kenshiro Thunderborn", col:1, row:0, candles:2,
+   strength:45, skill:80, armour:6,  health:100, attacks:2, twoHanded:false,
+   dialogue:"Your movements betray your fate, traveller.",
+   weaponAtks:[{label:"Long Blade",bonus:7,twoHanded:true},{label:"Short Blade",bonus:9,twoHanded:true}],
+   loot:[
+     {name:"Blade of Kenshiro",slot:"right",strBonus:7,type:"weapon",doubleDamage:true,uid:"ken_long"},
+     {name:"Kenshiro Short Blade",slot:"left",strBonus:9,type:"weapon",doubleDamage:true,uid:"ken_short"},
+   ]},
+  {id:"malgor",   name:"Dreadlord Malgor",     col:0, row:1, candles:3,
+   strength:76, skill:76, armour:42, health:100, attacks:1, twoHanded:true,
+   dialogue:"You dare enter MY tournament? Kneel before the Dreadlord!",
+   loot:[{name:"Armour of Malgor",slot:"body",armourBonus:12,type:"armour",uid:"malgor_armour"}]},
+  {id:"greegan",  name:"Greegan",              col:1, row:1, candles:3,
+   strength:40, skill:93, armour:4,  health:100, attacks:14, twoHanded:false,
+   dialogue:"Heh... this'll be quick. For me, at least.",
+   poisonDagger:true,
+   loot:[
+     {name:"Greegan's Boots",slot:"feet",armourBonus:3,sklBonus:5,type:"armour",uid:"greegan_boots"},
+     {name:"Poison Dagger",slot:"right",strBonus:3,type:"weapon",poisonOnHit:true,uid:"greegan_dagger"},
+   ]},
+];
 const DRAGON_POS = {x:219,y:243};
 const buildingAt = (x,y) => BUILDINGS.find(b=>b.x===x&&b.y===y)||null;
 const guardianAt = (x,y) => GUARDIANS.find(g=>g.x===x&&g.y===y)||null;
@@ -71,8 +98,8 @@ const WEAPONS = [
   {id:"dagger",     name:"Dagger",       slot:"either",strBonus:2, cost:8,     twoHanded:false, tier:1},
   {id:"mace",       name:"Mace",         slot:"either",strBonus:4, cost:55,    twoHanded:false, tier:2},
   {id:"shortsword", name:"Short Sword",  slot:"either",strBonus:5, cost:400,   twoHanded:false, tier:3},
-  {id:"longsword",  name:"Long Sword",   slot:"right", strBonus:7, cost:2750,  twoHanded:false, tier:4},
-  {id:"greatsword", name:"Great Sword",  slot:"both",  strBonus:15,cost:19000, twoHanded:true,  tier:5},
+  {id:"longsword",  name:"Long Sword",   slot:"right", strBonus:7, cost:900,   twoHanded:false, tier:4},
+  {id:"greatsword", name:"Great Sword",  slot:"both",  strBonus:10,cost:1500,  twoHanded:true,  tier:5},
 ];
 const ARMOUR_ITEMS = [
   {id:"leather",    name:"Leather Armour", slot:"body",        armourBonus:2,  cost:8,    tier:1},
@@ -98,7 +125,7 @@ const FOOD = [
 const BOARD_PRICE = 10;
 const MAGIC_TYPES_LIST = ["fire","lightning","iron","green","sun","frost","arcane"];
 const MAGIC_FORMS_LIST = ["wand","potion","ring"];
-const MAGIC_BASE  = {wand:25, potion:10, ring:100};
+const MAGIC_BASE  = {wand:25, potion:10, ring:1000};
 const MAGIC_MULT  = {fire:1,lightning:1,iron:1,green:4,sun:4,frost:4,arcane:20};
 const MAGIC_COLOR = {fire:"#e74c3c",lightning:"#f39c12",iron:"#95a5a6",green:"#27ae60",sun:"#f1c40f",frost:"#2980b9",arcane:"#9b59b6"};
 const MAGIC_COMPS = {fire:["fire"],lightning:["lightning"],iron:["iron"],green:["fire","iron"],sun:["lightning","fire"],frost:["lightning","iron"],arcane:["fire","lightning","iron"]};
@@ -138,9 +165,9 @@ function randDmg(str,arm) { return Math.max(0, rng(0,str)-rng(0,arm)); }
 
 function weaponAttacks(eq) {
   const {right_hand:rh, left_hand:lh} = eq;
-  if (rh?.twoHanded) return [{label:rh.name, bonus:rh.strBonus}];
+  if (rh?.twoHanded) return [{label:rh.name, bonus:rh.strBonus, twoHanded:true}];
   const atks = [{label:rh?rh.name:"Fist", bonus:rh?.strBonus||0}];
-  if (!lh?.armourBonus) atks.push({label:lh?lh.name:"Fist", bonus:lh?.strBonus||0});
+  if (lh && !lh.armourBonus) atks.push({label:lh.name, bonus:lh.strBonus||0});
   return atks;
 }
 
@@ -164,39 +191,56 @@ function generateMerchantStock() {
 
 // Equip weapon with correct hand logic
 function doEquipWeapon(item, eq) {
-  const {right_hand:rh, left_hand:lh} = eq;
+  // If a two-handed weapon is currently equipped, clear both hands first
+  // and return the greatsword to inventory as a single item (not twice)
+  let baseEq = {...eq};
+  let baseInv = [];
+  const rh0 = eq.right_hand, lh0 = eq.left_hand;
+  if (rh0?.twoHanded) {
+    baseEq = {...baseEq, right_hand:null, left_hand:null};
+    baseInv = [rh0]; // only add once even though it occupied both slots
+  }
+
+  const {right_hand:rh, left_hand:lh} = baseEq;
   const SIZE_ORDER = ["dagger","mace","shortsword","longsword"];
   const fitsLeft = w => w && w.slot !== "right";
-  let newEq = {...eq}, toInv = [], msg = "";
+  let newEq = {...baseEq}, toInv = [...baseInv], msg = "";
 
   if (item.twoHanded) {
-    toInv = [rh,lh].filter(Boolean).filter(i=>!i.twoHanded);
-    newEq = {...eq, right_hand:item, left_hand:item};
+    // Replace whatever is in hands (already cleared two-handers above)
+    if (rh) toInv.push(rh);
+    if (lh) toInv.push(lh);
+    newEq = {...baseEq, right_hand:item, left_hand:item};
     msg = `Equipped ${item.name} (both hands).`;
+  } else if (item.slot === "left") {
+    // Force into left hand (e.g. Kenshiro Short Blade)
+    if (lh) toInv.push(lh);
+    newEq = {...baseEq, left_hand:item};
+    msg = `Equipped ${item.name} in left hand.`;
   } else if (!rh && !lh) {
-    newEq = {...eq, right_hand:item};
+    newEq = {...baseEq, right_hand:item};
     msg = `Equipped ${item.name} in right hand.`;
   } else if (!rh) {
-    newEq = {...eq, right_hand:item};
+    newEq = {...baseEq, right_hand:item};
     msg = `Equipped ${item.name} in right hand.`;
   } else if (!lh) {
     const smaller = (SIZE_ORDER.indexOf(item.id)||0)<=(SIZE_ORDER.indexOf(rh.id)||0)?item:rh;
     const larger  = smaller===item?rh:item;
     if (fitsLeft(smaller)) {
-      newEq={...eq,right_hand:larger,left_hand:smaller};
+      newEq={...baseEq,right_hand:larger,left_hand:smaller};
       msg=`Equipped: ${larger.name} (right), ${smaller.name} (left).`;
-    } else { toInv=[rh]; newEq={...eq,right_hand:item}; msg=`Equipped ${item.name} in right hand.`; }
+    } else { toInv.push(rh); newEq={...baseEq,right_hand:item}; msg=`Equipped ${item.name} in right hand.`; }
   } else {
     const cands=[item,rh,lh];
     let placed=false;
     for(const [r,l] of [[item,rh],[item,lh],[rh,item],[lh,item]]) {
       if(fitsLeft(l)&&r.slot!=="left") {
         const disp=cands.find(c=>c!==r&&c!==l);
-        newEq={...eq,right_hand:r,left_hand:l}; toInv=[disp]; placed=true;
+        newEq={...baseEq,right_hand:r,left_hand:l}; toInv.push(disp); placed=true;
         msg=`Equipped: ${r.name} (right), ${l.name} (left). ${disp.name} to inventory.`; break;
       }
     }
-    if(!placed){toInv=[rh];newEq={...eq,right_hand:item};msg=`Equipped ${item.name} in right hand.`;}
+    if(!placed){toInv.push(rh);newEq={...baseEq,right_hand:item};msg=`Equipped ${item.name} in right hand.`;}
   }
   return {newEq, toInv:toInv.filter(Boolean), msg};
 }
@@ -285,30 +329,172 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
 }
 
 // ── Dragon Encounter ──────────────────────────────────────────────────────────
-function DragonEncounter({onFight,onFlee}){
-  return(
-    <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:"#1a0f05",border:"2px solid #ff6b00",borderRadius:10,overflow:"hidden",maxWidth:480,width:"95%",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
-        <div style={{position:"relative",flexShrink:0}}>
-          <img src={DRAGON_IMG} alt="Dragon" style={{width:"100%",maxHeight:260,objectFit:"cover",objectPosition:"center top",display:"block"}}/>
-          <div style={{position:"absolute",bottom:0,left:0,right:0,height:60,background:"linear-gradient(transparent,#1a0f05)"}}/>
-          <div style={{position:"absolute",bottom:8,left:0,right:0,textAlign:"center",color:"#ff6b00",fontSize:18,letterSpacing:"0.1em",textTransform:"uppercase",textShadow:"0 0 20px #ff6b00"}}>The Dragon</div>
+function TournamentEncounter({defeatedTournament,setDefeatedTournament,
+    heroState,setHeroState,addLog,onDismiss}){
+  const fighter=TOURNAMENT_FIGHTERS.find(f=>!defeatedTournament.has(f.id));
+  const allDone=!fighter;
+  const [phase,setPhase]=React.useState("intro");
+  const [fHp,setFHp]=React.useState(100);
+  const [hHp,setHHp]=React.useState(heroState.health);
+  const [log,setLog]=React.useState([]);
+  const [poisoned,setPoisoned]=React.useState(false);
+  const addL=msg=>setLog(p=>[msg,...p].slice(0,10));
+
+  const portrait=(f)=>f?{backgroundImage:`url(${TOURNAMENT_IMG})`,
+    backgroundSize:"200% 200%",
+    backgroundPosition:`${f.col*100}% ${f.row*100}%`,
+    width:140,height:140,flexShrink:0,borderRadius:4}:{};
+
+  const eff=(stat,hp)=>Math.max(1,stat*(hp/100));
+  const localRandDmg=(str,arm)=>Math.max(0,rng(0,Math.round(str))-rng(0,arm));
+  const hitC=(a,d)=>a/(a+d);
+
+  const fight=()=>{
+    if(!fighter||fHp<=0)return;
+    let mHp=fHp,hHpCur=hHp,lines=[],newPoisoned=poisoned;
+    const eq=heroState.equipped||{};
+    const hArm=totalArmour(eq,heroState.baseArmour||0);
+    const hSkl=eff(heroState.baseSkill,hHpCur);
+    const mSkl=eff(fighter.skill,mHp);
+    const ring=eq.finger;
+
+    // Fire ring heal
+    if(ring&&MAGIC_COMPS[ring.magicType]?.includes("fire")){
+      const g=Math.min(1,100-hHpCur);hHpCur=Math.min(100,hHpCur+1);
+      if(g>0)lines.push(`Ring heals 1 HP.`);
+    }
+    // Poison tick
+    if(newPoisoned){const d=rng(1,3);hHpCur=Math.max(0,hHpCur-d);lines.push(`Poison: -${d} HP.`);}
+
+    // Hero attacks
+    const atks=fighter.weaponAtks||weaponAttacks(eq);
+    for(const atk of atks){
+      if(mHp<=0)break;
+      // For fighters with custom weaponAtks (e.g. Kenshiro): damage = 2*rand(0,str+bonus) - rand(0,armour)
+      const str=fighter.weaponAtks
+        ?eff(fighter.strength+(atk.bonus||0),hHpCur)
+        :eff(heroState.baseStrength+(atk.bonus||0),hHpCur);
+      if(Math.random()<hitC(hSkl,mSkl)){
+        const d=atk.twoHanded?localRandDmg(str*2,fighter.armour):localRandDmg(str,fighter.armour);
+        mHp=Math.max(0,mHp-d);lines.push(`${atk.label}: ${d} dmg.`);
+      } else lines.push(`${atk.label}: miss.`);
+    }
+    // Lightning ring extra attack
+    if(ring&&MAGIC_COMPS[ring.magicType]?.includes("lightning")){
+      if(Math.random()<hitC(hSkl,mSkl)){
+        const d=localRandDmg(eff(heroState.baseStrength,hHpCur),fighter.armour);
+        mHp=Math.max(0,mHp-d);lines.push(`Ring attack: ${d} dmg.`);
+      }
+    }
+
+    if(mHp<=0){
+      setFHp(0);lines.push(`${fighter.name} is defeated!`);setLog(lines.slice(0,10));
+      setTimeout(()=>{
+        const nd=new Set(defeatedTournament);nd.add(fighter.id);
+        setDefeatedTournament(nd);
+        const newItems=(fighter.loot||[]).map((l,i)=>({...l,uid:l.uid||Date.now()+i}));
+        setHeroState(h=>({...h,candles:h.candles+fighter.candles,
+          inventory:[...h.inventory,...newItems]}));
+        addLog(`🏆 ${fighter.name} defeated! +${fighter.candles} candles!`
+          +(newItems.length?` Found: ${newItems.map(i=>i.name).join(", ")}`:""));
+        setPhase("victory");
+      },400);return;
+    }
+
+    // Fighter attacks
+    for(let i=0;i<fighter.attacks;i++){
+      if(hHpCur<=0)break;
+      if(Math.random()<hitC(eff(fighter.skill,mHp),hSkl)){
+        const fStr=fighter.twoHanded
+          ?localRandDmg(eff(fighter.strength,mHp)*2,hArm)
+          :localRandDmg(eff(fighter.strength,mHp),hArm);
+        hHpCur=Math.max(0,hHpCur-fStr);
+        lines.push(`${fighter.name}: ${fStr} dmg.`);
+        if(fighter.poisonDagger&&!newPoisoned&&Math.random()<0.4){
+          newPoisoned=true;lines.push("☠ You are poisoned!");
+        }
+      } else lines.push(`${fighter.name} misses.`);
+    }
+    setFHp(mHp);setHHp(hHpCur);setPoisoned(newPoisoned);
+    setLog(lines.slice(0,10));
+    setHeroState(h=>({...h,health:hHpCur}));
+    if(hHpCur<=0)setTimeout(()=>setPhase("dead"),200);
+  };
+
+  const btnS2=(col,dis)=>({padding:"8px 16px",background:"transparent",
+    border:`1.5px solid ${dis?"#333":col}`,color:dis?"#444":col,
+    cursor:dis?"not-allowed":"pointer",borderRadius:3,fontSize:12});
+
+  if(allDone)return(
+    <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",
+      alignItems:"center",justifyContent:"center",zIndex:100}}>
+      <div style={{background:C.panel,border:"2px solid #c9a84c",borderRadius:12,
+        maxWidth:420,width:"90%",textAlign:"center",padding:"28px 24px"}}>
+        <div style={{fontSize:20,color:"#c9a84c",marginBottom:12}}>🏆 Grand Tournament Complete!</div>
+        <div style={{color:C.text,fontSize:13,marginBottom:20}}>
+          All four champions have fallen. The Grand Tournament is yours!
         </div>
-        <div style={{padding:"14px 18px",overflowY:"auto"}}>
-          <div style={{background:"#120a02",border:"1px solid #ff6b0055",borderRadius:5,padding:"12px 14px",marginBottom:12,fontStyle:"italic",fontSize:12,lineHeight:1.8,color:"#e8d4b0",textAlign:"center"}}>
-            "Ah Jon, now that you are 50, you may have acquired much wisdom, but you are foolish to think you can defeat me. See how lovely and shiny I am. Behold my many treasures and so on. Now run away and bother me no more!"
+        <button style={btnS2("#c9a84c",false)} onClick={onDismiss}>Claim glory</button>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",
+      alignItems:"center",justifyContent:"center",zIndex:100}}>
+      <div style={{background:C.panel,border:"2px solid #8a3a20",borderRadius:12,
+        overflow:"hidden",maxWidth:480,width:"95%",display:"flex",flexDirection:"column"}}>
+        <div style={{background:"#1a0d05",padding:"10px 16px",borderBottom:"1px solid #3d2f18",
+          display:"flex",alignItems:"center",gap:12}}>
+          <div style={portrait(fighter)}/>
+          <div style={{flex:1}}>
+            <div style={{color:"#ff6b00",fontSize:15,fontWeight:"bold"}}>{fighter.name}</div>
+            <div style={{color:C.dim,fontSize:10,marginTop:4,fontStyle:"italic"}}>"{fighter.dialogue}"</div>
+            <div style={{color:C.dim,fontSize:10,marginTop:4}}>
+              STR:{fighter.strength} SKL:{fighter.skill} ARM:{fighter.armour} ATK:{fighter.attacks}×
+              {fighter.poisonDagger&&" ☠poison"}
+            </div>
           </div>
-          <div style={{color:"#7a6a4a",fontSize:10,textAlign:"center",marginBottom:14}}>Str: 40 · Skl: 40 · Arm: 25 · Attacks: 2 · Holds 10 candles</div>
-          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-            <button style={btnS("#7a6a4a",false)} onClick={onFlee} onMouseEnter={e=>{e.currentTarget.style.background="#7a6a4a";e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#7a6a4a";}}>Flee (Wisely)</button>
-            <button style={btnS("#ff6b00",false)} onClick={onFight} onMouseEnter={e=>{e.currentTarget.style.background="#ff6b00";e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#ff6b00";}}>⚔ Fight</button>
+        </div>
+        <div style={{padding:"8px 16px",borderBottom:"1px solid #3d2f18",display:"flex",gap:16}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,color:C.dim,marginBottom:2}}>YOU {poisoned?"☠":""}</div>
+            <div style={{height:6,background:"#1a1208",borderRadius:3,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${hHp}%`,borderRadius:3,
+                background:hHp>60?"#2d8a4e":hHp>25?"#c9a02b":"#c0392b"}}/>
+            </div>
           </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:9,color:C.dim,marginBottom:2}}>{fighter.name.toUpperCase()}</div>
+            <div style={{height:6,background:"#1a1208",borderRadius:3,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${fHp}%`,borderRadius:3,background:"#c0392b"}}/>
+            </div>
+          </div>
+        </div>
+        <div style={{height:110,overflowY:"auto",padding:"6px 14px",background:"#0d0a06",
+          borderBottom:"1px solid #3d2f18",fontSize:10,color:C.dim}}>
+          {log.length===0&&<div style={{color:"#555"}}>Prepare yourself...</div>}
+          {log.map((l,i)=><div key={i} style={{marginBottom:1,color:i===0?C.text:C.dim}}>{l}</div>)}
+        </div>
+        <div style={{padding:"10px 16px"}}>
+          {(phase==="intro"||phase==="fight")&&<div style={{display:"flex",gap:8}}>
+            <button style={btnS2("#c0392b",false)} onClick={()=>{setPhase("fight");fight();}}>⚔ Fight</button>
+            <button style={btnS2(C.dim,false)} onClick={onDismiss}>Flee</button>
+          </div>}
+          {phase==="victory"&&<div>
+            <div style={{color:"#6fcf97",fontSize:13,marginBottom:10}}>
+              🏆 Victory! +{fighter.candles} candles{fighter.loot?` · ${fighter.loot.name} added to inventory`:""}.</div>
+            <button style={btnS2("#c9a84c",false)} onClick={onDismiss}>Continue</button>
+          </div>}
+          {phase==="dead"&&<div>
+            <div style={{color:"#c0392b",fontSize:13,marginBottom:10}}>💀 You have fallen.</div>
+            <button style={btnS2("#c0392b",false)} onClick={onDismiss}>Game Over</button>
+          </div>}
         </div>
       </div>
     </div>
   );
 }
-
 
 
 function VictoryPanel({loot,inventory,equipped,INV_MAX,C,btnS,green,setHeroState,doEquipWeapon,onContinue}){
@@ -393,6 +579,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
   const [combatLog,setCombatLog]=useState([`⚔ You face the ${monster.name}!`]);
   const addCombatLog=msg=>setCombatLog(p=>[msg,...p].slice(0,20));
   const [done,setDone]=useState(null); // "won"|"fled"|"dead"
+  const [poisoned,setPoisoned]=useState(false);
 
   const eq=heroState.equipped||{head:null,body:null,right_hand:null,left_hand:null,feet:null};
   const ring=eq.finger;
@@ -437,13 +624,17 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
 
   const doFight=()=>{
     let hHp=heroState.health, mHp=mon.health;
+    let newPoisoned=poisoned;
     const lines=[];
 
     // Ring passives
     if(ring){
       const comps=MAGIC_COMPS[ring.magicType]||[];
-      if(comps.includes("fire")){const d=rng(1,3);const g=Math.min(d,100-hHp);hHp=Math.min(100,hHp+d);if(g>0)lines.push(`${ring.name} heals ${g} HP.`);}
+      if(comps.includes("fire")){const g=Math.min(1,100-hHp);hHp=Math.min(100,hHp+1);if(g>0)lines.push(`${ring.name} heals 1 HP.`);}
     }
+    // Poison tick
+    if(newPoisoned){const pd=rng(1,3);hHp=Math.max(0,hHp-pd);lines.push(`☠ Poison: -${pd} HP.`);}
+    if(hHp<=0){lines.forEach(addCombatLog);setHeroState(h=>({...h,health:0}));endCombat("dead");return;}
 
     // Hero attacks
     const extraAtk=ring&&MAGIC_COMPS[ring.magicType]?.includes("lightning")?1:0;
@@ -454,7 +645,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
       const hSkl=eff(heroState.baseSkill,hHp);
       const mSkl=eff(mon.skill,mHp);
       if(Math.random()<hitChance(hSkl,mSkl)){
-        const d=randDmg(hStr,mon.armour);
+        const d=atk.twoHanded ? randDmg(hStr*2, mon.armour) : randDmg(hStr, mon.armour);
         mHp=Math.max(0,mHp-d);
         lines.push(`${atk.label}: ${d} dmg.`);
       } else lines.push(`${atk.label}: miss.`);
@@ -471,6 +662,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
           const d=randDmg(mStr,armour);
           hHp=Math.max(0,hHp-d);
           lines.push(`${mon.name} hits: ${d} dmg.`);
+          if(mon.poisonDagger&&!newPoisoned&&Math.random()<0.4){newPoisoned=true;lines.push("☠ You are poisoned!");}
         } else lines.push(`${mon.name} misses.`);
         if(hHp<=0) break;
       }
@@ -478,6 +670,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
 
     lines.forEach(addCombatLog);
     setMon(m=>({...m,health:mHp}));
+    if(newPoisoned!==poisoned) setPoisoned(newPoisoned);
     setHeroState(h=>({...h,health:hHp}));
     if(mHp<=0) endCombat("won");
     else if(hHp<=0) endCombat("dead");
@@ -491,7 +684,16 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
     if(comps.includes("lightning")){const d=rng(1,3);m.skill=Math.max(1,m.skill-d);lines.push(`${wand.name}: -${d} monster skill.`);}
     if(comps.includes("iron")){const d=rng(1,3);m.strength=Math.max(1,m.strength-d);lines.push(`${wand.name}: -${d} monster strength.`);}
     setMon(m);
-    setHeroState(h=>({...h,inventory:h.inventory.filter(i=>i.id!==wand.id)}));
+    // Uses: first 5 are free; after that 50% chance to lose power each use
+    const uses=(wand.uses||0)+1;
+    const breaks=uses>5&&Math.random()<0.5;
+    if(breaks){
+      setHeroState(h=>({...h,inventory:h.inventory.filter(i=>i.uid!==wand.uid)}));
+      lines.push(`${wand.name} sputters and loses its power!`);
+    } else {
+      setHeroState(h=>({...h,inventory:h.inventory.map(i=>i.uid===wand.uid?{...i,uses}:i)}));
+      if(uses===5) lines.push(`${wand.name} flickers — further uses may destroy it.`);
+    }
     lines.forEach(addCombatLog);
     if(m.health<=0) endCombat("won");
   };
@@ -527,8 +729,8 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
             <div style={{color:isDragon?"#ff6b00":C.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>{mon.name}</div>
             <HpBar pct={mHpPct}/>
             <div style={{display:"flex",gap:12,fontSize:10,color:C.dim}}>
-              <span>Str:{eff(mon.strength,mon.health)}/{mon.strength}</span>
-              <span>Skl:{eff(mon.skill,mon.health)}/{mon.skill}</span>
+              <span>Str:{Math.round(eff(mon.strength,mon.health))}/{mon.strength}</span>
+              <span>Skl:{Math.round(eff(mon.skill,mon.health))}/{mon.skill}</span>
               <span>Arm:{mon.armour}</span>
               <span>Atk:{effCeil(mon.attacks,mon.health)}/{mon.attacks}</span>
             </div>
@@ -556,7 +758,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
               <button style={btnS(C.dim,false)} onClick={()=>{ if(Math.random()<0.75){endCombat("fled");}else{addCombatLog("Failed to flee! The enemy strikes as you turn!");doFight();}}} onMouseEnter={e=>{e.currentTarget.style.background=C.dim;e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.dim;}}>🏃 Flee (75%)</button>
             </div>
             {(wands.length>0||potions.length>0)&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {wands.map(w=><button key={w.id} style={{...btnS(MAGIC_COLOR[w.magicType],false),padding:"3px 9px",fontSize:10}} onClick={()=>useWand(w)} onMouseEnter={e=>{e.currentTarget.style.background=MAGIC_COLOR[w.magicType];e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=MAGIC_COLOR[w.magicType];}}>⚡ {w.name}</button>)}
+              {wands.map(w=>{const uses=w.uses||0;const risky=uses>=5;return(<button key={w.uid||w.id} style={{...btnS(risky?"#e07030":MAGIC_COLOR[w.magicType],false),padding:"3px 9px",fontSize:10}} onClick={()=>useWand(w)} onMouseEnter={e=>{e.currentTarget.style.background=risky?"#e07030":MAGIC_COLOR[w.magicType];e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=risky?"#e07030":MAGIC_COLOR[w.magicType];}}>⚡ {w.name}{uses>0?` (${uses})`:""}</button>);})}
               {potions.map(p=><button key={p.id} style={{...btnS(MAGIC_COLOR[p.magicType],false),padding:"3px 9px",fontSize:10}} onClick={()=>usePotion(p)} onMouseEnter={e=>{e.currentTarget.style.background=MAGIC_COLOR[p.magicType];e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=MAGIC_COLOR[p.magicType];}}>🧪 {p.name}</button>)}
             </div>}
           </>}
@@ -586,7 +788,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
 
 
 // ── Shop dialogues ────────────────────────────────────────────────────────────
-function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,onDismiss}){
+function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,groundItems,setGroundItems,onDismiss}){
   const [tab,setTab]=useState("buy");
   const [saveMsg,setSaveMsg]=React.useState("");
   const SAVE_KEY="birthday_quest_save";
@@ -597,7 +799,7 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
   };
   const saveGame=()=>{
     try{
-      const saveData={heroState,defeatedGuardians:[...(defeatedGuardians||[])],timestamp:Date.now()};
+      const saveData={heroState,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},timestamp:Date.now()};
       const cs=computeChecksum(saveData);
       localStorage.setItem(SAVE_KEY,JSON.stringify({...saveData,checksum:cs}));
       setSaveMsg("✓ Game saved!");setTimeout(()=>setSaveMsg(""),2500);
@@ -610,6 +812,11 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
       const{checksum:cs,...saveData}=JSON.parse(raw);
       if(cs!==computeChecksum(saveData)){setSaveMsg("✗ Save corrupted!");return;}
       setHeroState(saveData.heroState);
+      if(saveData.groundItems&&setGroundItems) setGroundItems(saveData.groundItems);
+      if(saveData.defeatedTournament&&setDefeatedTournament){
+        const t=new Set(saveData.defeatedTournament);
+        setDefeatedTournament(t);defeatedTournamentRef.current=t;
+      }
       if(saveData.defeatedGuardians&&setDefeatedGuardians){
         const s=new Set(saveData.defeatedGuardians);
         setDefeatedGuardians(s);
@@ -911,7 +1118,7 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,onDismiss}){
           <div style={{marginLeft:"auto",textAlign:"right"}}><div style={{color:C.dim,fontSize:10}}>Gold</div><div style={{color:C.gold,fontSize:15,fontWeight:"bold"}}>{heroState.gold}g</div></div>
         </div>
         <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
-          {[["buy","🛒 Buy"],["sell","💰 Sell"]].map(([t,l])=>(
+          {[["buy","🛒 Buy"],["sell","💰 Sell"],["equip","⚔ Equip"]].map(([t,l])=>(
             <div key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
@@ -937,6 +1144,61 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,onDismiss}){
                 }
               </div>)))}
         </div>
+        {tab==="equip"&&<div style={{padding:"4px 0"}}>
+          {/* Equipped slots */}
+          <div style={{marginBottom:8}}>
+            <div style={{color:C.gold,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>Equipped</div>
+            {Object.entries({head:"Head",body:"Body",right_hand:"Right",left_hand:"Left",finger:"Ring",feet:"Feet"}).map(([slot,label])=>{
+              const eq=heroState.equipped||{};
+              const item=eq[slot];
+              const isGS=item?.twoHanded&&slot==="left_hand";
+              return(
+                <div key={slot} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",marginBottom:3,borderRadius:3,background:"#1f1a11",border:`1px solid ${C.border}`}}>
+                  <span style={{fontSize:10,color:C.dim,width:36,flexShrink:0}}>{label}</span>
+                  <span style={{fontSize:10,color:item?C.text:"#3a3020",flex:1}}>{isGS?"(off-hand)":item?item.name:"—"}</span>
+                  {item&&!isGS&&<button style={{fontSize:8,padding:"1px 6px",background:"transparent",border:`1px solid ${C.red}`,color:C.red,cursor:"pointer",borderRadius:2}}
+                    onClick={()=>setHeroState(h=>({...h,
+                      equipped:{...h.equipped,[slot]:null},
+                      inventory:[...h.inventory,item]}))}>Unequip</button>}
+                </div>
+              );
+            })}
+          </div>
+          {/* Inventory equippable items */}
+          <div>
+            <div style={{color:C.gold,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>Inventory</div>
+            {(heroState.inventory||[]).filter(i=>i.type!=="food").length===0
+              &&<div style={{color:C.dim,fontSize:11,fontStyle:"italic"}}>No equippable items.</div>}
+            {(heroState.inventory||[]).filter(i=>i.type!=="food").map((item,i)=>{
+              const inv=heroState.inventory||[];
+              const realIdx=inv.indexOf(item);
+              return(
+                <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",marginBottom:3,borderRadius:3,background:"#1f1a11",border:`1px solid ${C.border}`}}>
+                  <span style={{fontSize:10,color:item.type==="magic"?(item.color||"#9b59b6"):item.strBonus!=null?"#e74c3c":"#7f8c8d",flex:1}}>{item.name}</span>
+                  {(item.strBonus!=null||item.armourBonus!=null)&&<button style={{fontSize:8,padding:"1px 6px",background:"transparent",border:`1px solid ${C.green}`,color:C.green,cursor:"pointer",borderRadius:2}}
+                    onClick={()=>{
+                      const eq=heroState.equipped||{};
+                      if(item.strBonus!=null){
+                        const{newEq,toInv}=doEquipWeapon(item,eq);
+                        setHeroState(h=>({...h,equipped:{...h.equipped,...newEq},inventory:[...h.inventory.filter((_,j)=>j!==realIdx),...toInv]}));
+                      } else {
+                        const slot=item.slot==="left_shield"?"left_hand":item.slot;
+                        const old=eq[slot];
+                        setHeroState(h=>({...h,equipped:{...h.equipped,[slot]:item},inventory:[...h.inventory.filter((_,j)=>j!==realIdx),...(old?[old]:[])]}));
+                      }
+                    }}>Equip</button>}
+                  {item.type==="magic"&&item.form==="ring"&&<button style={{fontSize:8,padding:"1px 6px",background:"transparent",border:`1px solid #9b59b6`,color:"#9b59b6",cursor:"pointer",borderRadius:2}}
+                    onClick={()=>{
+                      const old=(heroState.equipped||{}).finger;
+                      setHeroState(h=>({...h,equipped:{...h.equipped,finger:item},inventory:[...h.inventory.filter((_,j)=>j!==realIdx),...(old?[old]:[])]}));
+                    }}>Wear</button>}
+                  <button style={{fontSize:8,padding:"1px 6px",background:"transparent",border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2}}
+                    onClick={()=>setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==realIdx)}))}>Drop</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>}
         <div style={{padding:"10px 12px",borderTop:`1px solid ${C.border}`,flexShrink:0,display:"flex",justifyContent:"flex-end"}}>
           <button style={btnS(C.dim,false)} onClick={onDismiss} onMouseEnter={e=>{e.currentTarget.style.background=C.dim;e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.dim;}}>Move On</button>
         </div>
@@ -977,8 +1239,8 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
   const fightRound=(heroHp,monHp,mon,eq,armour)=>{
     const lines=[]; const ring=eq.finger;
     if(ring&&MAGIC_COMPS[ring.magicType]?.includes("fire")){
-      const d=rng(1,3);const g=Math.min(d,100-heroHp);heroHp=Math.min(100,heroHp+d);
-      if(g>0) lines.push(`Ring heals ${g} HP.`);
+      const g=Math.min(1,100-heroHp);heroHp=Math.min(100,heroHp+1);
+      if(g>0) lines.push(`Ring heals 1 HP.`);
     }
     const extraAtk=ring&&MAGIC_COMPS[ring.magicType]?.includes("lightning")?1:0;
     const atks=[...weaponAttacks(eq),...Array(extraAtk).fill({label:"Ring",bonus:0})];
@@ -1165,13 +1427,20 @@ const CELL_PX=16;
 const CANVAS=VIEW*CELL_PX; // 976px viewport
 
 
-function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAttacks,doEquipWeapon}){
+function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAttacks,doEquipWeapon,heroPos,setGroundItems}){
   const eq=heroState.equipped||{};
   const inv=heroState.inventory||[];
   const overFull=inv.length>INV_MAX;
   const armour=totalArmour(eq,heroState.baseArmour||0);
   const atks=weaponAttacks(eq);
   const SLOT_LABELS={head:"Head",body:"Body",right_hand:"Right",left_hand:"Left",finger:"Ring",feet:"Feet"};
+  const dropToGround=(item,idx)=>{
+    if(heroPos&&setGroundItems){
+      const key=`${heroPos.x},${heroPos.y}`;
+      setGroundItems(g=>({...g,[key]:[...(g[key]||[]),item]}));
+    }
+    setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==idx)}));
+  };
   return(
     <div style={{background:"#1a1510",border:`1px solid ${C.border}`,borderRight:"none",
       padding:"10px 12px",width:185,maxHeight:"85vh",overflowY:"auto",
@@ -1232,7 +1501,7 @@ function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAtta
               <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                 <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
                   border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2}}
-                  onClick={()=>setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==i)}))}>
+                  onClick={()=>dropToGround(item,i)}>
                   Drop
                 </button>
                 {item.type==="food"&&(
@@ -1282,9 +1551,114 @@ function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAtta
   );
 }
 
+// ── Ground Items Dialogue ────────────────────────────────────────────────────
+function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundItems,onDismiss}){
+  const C2=C; // alias
+  const eq=heroState.equipped||{};
+
+  const takeAll=()=>{
+    const gold=items.filter(i=>i.isGold).reduce((s,i)=>s+(i.amount||0),0);
+    const realItems=items.filter(i=>!i.isGold);
+    setHeroState(h=>({...h,gold:h.gold+gold,inventory:[...h.inventory,...realItems]}));
+    setGroundItems(g=>{const n={...g};delete n[groundKey];return n;});
+    onDismiss();
+  };
+
+  const takeItem=(item,idx)=>{
+    setHeroState(h=>({...h,inventory:[...h.inventory,item]}));
+    setGroundItems(g=>{
+      const updated=(g[groundKey]||[]).filter((_,j)=>j!==idx);
+      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
+      return {...g,[groundKey]:updated};
+    });
+  };
+
+  const dropItem=(item)=>{
+    setGroundItems(g=>({...g,[groundKey]:[...(g[groundKey]||[]),item]}));
+    setHeroState(h=>({...h,inventory:h.inventory.filter(i=>(i.uid||i.id)!==(item.uid||item.id))}));
+  };
+
+  const equipItem=(item,idx)=>{
+    takeItem(item,idx);
+    // equip handled by hero panel after taking
+  };
+
+  const gold=items.filter(i=>i.isGold).reduce((s,i)=>s+(i.amount||0),0);
+  const realItems=items.filter(i=>!i.isGold);
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000b",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+      <div style={{background:C2.panel,border:`1px solid ${C2.border}`,borderRadius:10,overflow:"hidden",maxWidth:400,width:"95%",maxHeight:"80vh",display:"flex",flexDirection:"column"}}>
+        <div style={{padding:"12px 16px",borderBottom:`1px solid ${C2.border}`,background:"#120f07",flexShrink:0}}>
+          <div style={{color:C2.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>Items on the Ground</div>
+          <div style={{color:C2.dim,fontSize:10,marginTop:2}}>You find something here...</div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"10px 14px"}}>
+          {gold>0&&(
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:6,borderRadius:4,background:"#1f1a08",border:`1px solid ${C2.border}`}}>
+              <span style={{fontSize:18}}>💰</span>
+              <span style={{fontSize:13,color:C2.gold,flex:1}}>{gold} gold</span>
+              <span style={{fontSize:10,color:C2.dim,fontStyle:"italic"}}>auto-collected</span>
+            </div>
+          )}
+          {realItems.map((item,i)=>{
+            const col=item.type==="magic"?(item.color||"#9b59b6"):
+              item.type==="food"?C2.gold:item.strBonus!=null?"#e74c3c":"#7f8c8d";
+            return(
+              <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",marginBottom:5,borderRadius:4,background:"#1f1a11",border:`1px solid ${C2.border}`}}>
+                <span style={{fontSize:12,color:col,flex:1}}>{item.name}</span>
+                {item.strBonus!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.strBonus}str</span>}
+                {item.armourBonus!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.armourBonus}arm</span>}
+                {item.heal!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.heal}hp</span>}
+                <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C2.green}`,color:C2.green,cursor:"pointer",borderRadius:2}}
+                  onClick={()=>takeItem(item,i)}>Take</button>
+                {item.type==="food"&&<button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid #2d8a4e`,color:"#2d8a4e",cursor:"pointer",borderRadius:2}}
+                  onClick={()=>{
+                    setHeroState(h=>({...h,health:Math.min(100,h.health+(item.heal||0))}));
+                    setGroundItems(g=>{
+                      const updated=(g[groundKey]||[]).filter((_,j)=>j!==i);
+                      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
+                      return {...g,[groundKey]:updated};
+                    });
+                  }}>Eat</button>}
+              </div>
+            );
+          })}
+          {/* Hero inventory for dropping */}
+          {(heroState.inventory||[]).length>0&&<>
+            <div style={{color:C2.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",margin:"10px 0 5px"}}>Your inventory — drop here</div>
+            {(heroState.inventory||[]).map((item,i)=>(
+              <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",marginBottom:4,borderRadius:4,background:"#151008",border:`1px solid ${C2.border}`}}>
+                <span style={{fontSize:11,color:C2.text,flex:1}}>{item.name}</span>
+                <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C2.dim}`,color:C2.dim,cursor:"pointer",borderRadius:2}}
+                  onClick={()=>dropItem(item)}>Drop</button>
+              </div>
+            ))}
+          </>}
+        </div>
+        <div style={{padding:"10px 14px",borderTop:`1px solid ${C2.border}`,flexShrink:0,display:"flex",gap:8,justifyContent:"space-between"}}> 
+          {(gold>0||realItems.length>0)&&<button style={{...btnS(C2.gold,false),padding:"6px 16px"}} onClick={takeAll}
+            onMouseEnter={e=>{e.currentTarget.style.background=C2.gold;e.currentTarget.style.color=C2.bg;}}
+            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C2.gold;}}>
+            Take All
+          </button>}
+          <button style={{...btnS(C2.dim,false),padding:"6px 16px"}} onClick={onDismiss}
+            onMouseEnter={e=>{e.currentTarget.style.background=C2.dim;e.currentTarget.style.color=C2.bg;}}
+            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C2.dim;}}>
+            Leave
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Game(){
   const [heroState,setHeroState]=useState({...INIT_HERO});
   const [defeatedGuardians,setDefeatedGuardians]=useState(new Set());
+  const [defeatedTournament,setDefeatedTournament]=useState(new Set());
+  const defeatedTournamentRef=useRef(new Set());
+  useEffect(()=>{defeatedTournamentRef.current=defeatedTournament;},[defeatedTournament]);
   const defeatedGuardiansRef=useRef(new Set());
   const [fadingGuardian,setFadingGuardian]=useState(null); // id of guardian currently animating out
   const [heroPos,setHeroPos]=useState({x:23,y:14});
@@ -1293,6 +1667,7 @@ export default function Game(){
   const [keyOpen,setKeyOpen]=useState(false);
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
+  const [groundItems,setGroundItems]=useState({}); // key="x,y" → [{item},...,gold:N]
   const [gameState,setGameState]=useState("playing"); // playing|won|dead
   const canvasRef=useRef(null);
   const pathRef=useRef([]);
@@ -1603,8 +1978,12 @@ export default function Game(){
     if(pathRef.current.length===0){setTarget(null);return;}
     const[nx,ny]=pathRef.current.shift();
 
-    // Dragon?
-    if(dragonAt(nx,ny)){stopAt(nx,ny);addLog("You approach the dragon's lair...");setModal({type:"dragon"});return;}
+    // Grand Tournament?
+    if(dragonAt(nx,ny)){stopAt(nx,ny);
+      const remaining=TOURNAMENT_FIGHTERS.filter(f=>!defeatedTournamentRef.current.has(f.id));
+      if(remaining.length>0){addLog(`⚔ You enter the Grand Tournament! Next: ${remaining[0].name}`);setModal({type:"tournament"});}
+      else{addLog("🏆 The Grand Tournament is complete! All champions defeated.");}
+      return;}
     // Guardian?
     const grd=guardianAt(nx,ny);
     if(grd&&!defeatedGuardiansRef.current.has(grd.id)){stopAt(nx,ny);addLog(`${grd.name} bars your way!`);setModal({type:"guardian",data:grd});return;}
@@ -1621,6 +2000,15 @@ export default function Game(){
     }
     heroPosRef.current={x:nx,y:ny};
     setHeroPos({x:nx,y:ny});
+    // Ground items check
+    const gKey=`${nx},${ny}`;
+    setGroundItems(g=>{
+      if(g[gKey]&&g[gKey].length>0){
+        stopAt(nx,ny);
+        setModal({type:"ground",data:{key:gKey,items:g[gKey]}});
+      }
+      return g;
+    });
     // Fire ring: heal 1 HP every 10 steps
     stepCountRef.current=(stepCountRef.current||0)+1;
     if(stepCountRef.current%10===0){
@@ -1713,11 +2101,11 @@ export default function Game(){
             userSelect:"none"}}>
           {keyOpen?"▶":"◀"} Hero
         </div>
-        {keyOpen&&<HeroPanel heroState={heroState} setHeroState={setHeroState} C={C} btnS={btnS} INV_MAX={INV_MAX} totalArmour={totalArmour} weaponAttacks={weaponAttacks} doEquipWeapon={doEquipWeapon}/>}
+        {keyOpen&&<HeroPanel heroState={heroState} setHeroState={setHeroState} C={C} btnS={btnS} INV_MAX={INV_MAX} totalArmour={totalArmour} weaponAttacks={weaponAttacks} doEquipWeapon={doEquipWeapon} heroPos={heroPos} setGroundItems={setGroundItems}/>}
       </div>
       {/* MODALS */}
       {modal?.type==="building"&&modal.data.type==="tavern"&&
-        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} defeatedGuardians={defeatedGuardians} setDefeatedGuardians={(s)=>{setDefeatedGuardians(s);defeatedGuardiansRef.current=s;}} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
+        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} defeatedGuardians={defeatedGuardians} setDefeatedGuardians={(s)=>{setDefeatedGuardians(s);defeatedGuardiansRef.current=s;}} groundItems={groundItems} setGroundItems={setGroundItems} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
       {modal?.type==="building"&&modal.data.type==="armourer"&&
         <ArmourerDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} onDismiss={()=>{setModal(null);addLog(`You leave ${modal.data.name}.`);}}/>}
       {modal?.type==="building"&&modal.data.type==="arena"&&
@@ -1736,10 +2124,13 @@ export default function Game(){
             },1200);
           }}
           onDismiss={()=>{setModal(null);addLog(`You leave ${modal.data.name}.`);}}/>}
-      {modal?.type==="dragon"&&
-        <DragonEncounter
-          onFight={()=>{setModal({type:"combat",data:{idx:0,name:"The Dragon",col:0,row:0,health:100,maxHealth:100,strength:40,skill:40,armour:25,attacks:2,level:35,isDragon:true}});addLog("You charge at the dragon!");}}
-          onFlee={()=>{setModal(null);addLog("You flee from the dragon... for now.");}}/>}
+      {modal?.type==="tournament"&&
+        <TournamentEncounter
+          defeatedTournament={defeatedTournament}
+          setDefeatedTournament={(s)=>{setDefeatedTournament(s);defeatedTournamentRef.current=s;}}
+          heroState={heroState} setHeroState={setHeroState}
+          addLog={addLog}
+          onDismiss={()=>setModal(null)}/>}
       {modal?.type==="combat"&&
         <CombatScreen
           monster={modal.data} heroState={heroState} setHeroState={setHeroState}
@@ -1773,11 +2164,21 @@ export default function Game(){
           </div>
         </div>
       )}
+      {modal?.type==="ground"&&modal.data&&(
+        <GroundItemsDialogue
+          items={modal.data.items}
+          groundKey={modal.data.key}
+          heroState={heroState}
+          setHeroState={setHeroState}
+          setGroundItems={setGroundItems}
+          onDismiss={()=>setModal(null)}
+        />
+      )}
       {modal?.type==="merchant"&&merchantStock&&
         <MerchantDialogue stock={merchantStock} setStock={setMerchantStock} heroState={heroState} setHeroState={setHeroState} onDismiss={()=>{setModal(null);setMerchantStock(null);addLog("The merchant tips his hat and moves on.");}}/>}
 
       {gameState==="won"&&<WinScreen/>}
-      {gameState==="dead"&&<GameOverScreen onRestart={()=>{setHeroState({...INIT_HERO});setHeroPos({x:23,y:14});heroPosRef.current={x:23,y:14};setDefeatedGuardians(new Set());defeatedGuardiansRef.current=new Set();setGameState("playing");setModal(null);pathRef.current=[];setLog(["Your quest begins anew at The Portly Pixie."]);}}/>}}
+      {gameState==="dead"&&<GameOverScreen onRestart={()=>{setHeroState({...INIT_HERO});setHeroPos({x:23,y:14});heroPosRef.current={x:23,y:14};setDefeatedGuardians(new Set());defeatedGuardiansRef.current=new Set();setGameState("playing");setModal(null);pathRef.current=[];setLog(["Your quest begins anew at The Portly Pixie."]);}}/>}
     </div>
   );
 }
