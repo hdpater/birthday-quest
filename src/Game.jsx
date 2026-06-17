@@ -182,12 +182,12 @@ function randomMagicItem() {
 }
 
 function magicItem(t, f, id) {
-    return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,
-    type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]};
+    return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]};
 }
 
 function gold(amount) {
-    return {isGold:true,amount:amount,name:`${amount} gold`}
+    return {isGold:true,amount:amount,name:`${amount} gold`};
+}
 
 function generateMerchantStock() {
   const pool=[...FOOD,...ARMOUR_ITEMS,...WEAPONS];
