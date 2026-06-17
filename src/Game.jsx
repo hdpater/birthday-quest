@@ -179,14 +179,15 @@ function totalArmour(eq, base) {
 function randomMagicItem() {
     const t=MAGIC_TYPES_LIST[rng(0,6)], f=MAGIC_FORMS_LIST[rng(0,2)], id=`magic_${Date.now()}_${Math.random()}`;
     return magicItem(t, f, id);
-  /* return {id:`magic_${Date.now()}_${Math.random()}`,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,
-    type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]}; */
 }
 
-function magicItem(magicType, magicForm, id) {
+function magicItem(t, f, id) {
     return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,
     type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]};
 }
+
+function gold(amount) {
+    return {isGold:true,amount:amount,name:`${amount} gold`}
 
 function generateMerchantStock() {
   const pool=[...FOOD,...ARMOUR_ITEMS,...WEAPONS];
@@ -2304,9 +2305,9 @@ export default function Game(){
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
   const [groundItems,setGroundItems]=useState({
-      "32,30": [{"id": "hp1", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp1_0"}, {"isGold": true, "amount": 49, "uid": "gold_32_30", "name": "49 gold"}],
-      "69,58": [{"id": "hp2", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp2_1"}, {"isGold": true, "amount": 33, "uid": "gold_69_58", "name": "33 gold"}],
-      "145,20": [{"id": "hp3", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp3_2"}, {"isGold": true, "amount": 46, "uid": "gold_145_20", "name": "46 gold"}],
+      "32,30": [{...magicItem("fire","potion","hp1"),uid:"ground_fire_potion0"}, {...gold(49),"uid": "gold_32_30"}],
+      "69,58": [{...magicItem("fire","potion","hp1"),uid:"ground_fire_potion1"}, {"isGold": true, "amount": 33, "uid": "gold_69_58", "name": "33 gold"}],
+      "145,20": [{...magicItem("fire","potion","hp1"),uid:"ground_fire_potion2"}, {"isGold": true, "amount": 46, "uid": "gold_145_20", "name": "46 gold"}],
       "186,17": [{"id": "fire_wand_g", "name": "Fire Wand", "type": "magic", "form": "wand", "magicType": "fire", "color": "#e74c3c", "cost": 25, "uid": "ground_fire_wand_g_3"}, {"isGold": true, "amount": 22, "uid": "gold_186_17", "name": "22 gold"}],
       "208,20": [{"id": "arc_wand_g", "name": "Arcane Wand", "type": "magic", "form": "wand", "magicType": "arcane", "color": "#9b59b6", "cost": 500, "uid": "ground_arc_wand_g_4"}, {"isGold": true, "amount": 55, "uid": "gold_208_20", "name": "55 gold"}],
       "28,89": [{"id": "frost_wand_g", "name": "Frost Wand", "type": "magic", "form": "wand", "magicType": "frost", "color": "#3498db", "cost": 100, "uid": "ground_frost_wand_g_5"}, {"isGold": true, "amount": 14, "uid": "gold_28_89", "name": "14 gold"}],
