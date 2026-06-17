@@ -908,7 +908,7 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
             {heroState.health===100&&<div style={{color:C.dim,fontSize:11,fontStyle:"italic",textAlign:"center"}}>You are already at full health.</div>}
           {heroState.health<100&&<div style={{color:C.dim,fontSize:11,textAlign:"center",marginTop:6}}>Tonight's stay is complimentary.</div>}
           </div>}
-          {tab==="load/save"&&<div style={{padding:"8px 0"}}>
+          {tab==="save"&&<div style={{padding:"8px 0"}}>
             <div style={{fontSize:11,color:C.dim,marginBottom:14,fontStyle:"italic",textAlign:"center"}}>"Rest here, traveller. Your tale shall be remembered."</div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <button style={{...btnS(C.gold,false),padding:"10px"}} onClick={saveGame}
