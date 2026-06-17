@@ -794,7 +794,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
 
 
 // ── Shop dialogues ────────────────────────────────────────────────────────────
-function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,defeatedTournament,setDefeatedTournament,defeatedTournamentRef,hasMap,setHasMap,groundItems,setGroundItems,onDismiss}){
+function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,defeatedTournament,setDefeatedTournament,hasMap,setHasMap,groundItems,setGroundItems,onDismiss}){
   const [tab,setTab]=useState("buy");
   const [saveMsg,setSaveMsg]=React.useState("");
   const SAVE_KEY="birthday_quest_save";
@@ -824,7 +824,7 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
       if(saveData.groundItems&&setGroundItems) setGroundItems(saveData.groundItems);
       if(saveData.defeatedTournament&&setDefeatedTournament){
         const t=new Set(saveData.defeatedTournament);
-        setDefeatedTournament(t);defeatedTournamentRef.current=t;
+        setDefeatedTournament(t);
       }
       if(saveData.defeatedGuardians&&setDefeatedGuardians){
         const s=new Set(saveData.defeatedGuardians);
@@ -1148,7 +1148,7 @@ function CastleDialogue({heroState,onDismiss,onEnter,onWin}){
 }
 
 // ── Merchant Dialogue ─────────────────────────────────────────────────────────
-function MerchantDialogue({stock,setStock,heroState,setHeroState,onDismiss}){
+function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,setGroundItems,heroPos,onDismiss}){
   const [tab,setTab]=useState("buy");
   const inv=heroState.inventory||[];
   const buy=(item)=>{
@@ -1160,6 +1160,13 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,onDismiss}){
   const sell=(item)=>{
     const sp=sellPrice(item);
     setHeroState(h=>({...h,gold:h.gold+sp,inventory:h.inventory.filter(i=>(i.uid||i.id)!==(item.uid||item.id))}));
+  };
+  const dropItem=(item)=>{
+    if(heroPos&&setGroundItems){
+      const key=`${heroPos.x},${heroPos.y}`;
+      setGroundItems(g=>({...g,[key]:[...(g[key]||[]),item]}));
+    }
+    setHeroState(h=>({...h,inventory:h.inventory.filter(i=>(i.uid||i.id)!==(item.uid||item.id))}));
   };
   const TYPE_ICON={food:"🍺",weapon:"⚔",armour:"🛡",magic:"✦"};
   return(
@@ -1191,10 +1198,12 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,onDismiss}){
                 <span style={{fontSize:11,color:C.text,flex:1}}>{item.name}</span>
                 {item.type==="food"?<>
                   <button style={{...btnS(C.green,false),padding:"4px 10px",fontSize:10}} onClick={()=>setHeroState(h=>({...h,health:Math.min(100,h.health+(item.heal||0)),inventory:h.inventory.filter(i2=>(i2.uid||i2.id)!==(item.uid||item.id))}))} onMouseEnter={e=>{e.currentTarget.style.background=C.green;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.green;}}>Eat</button>
-                  <button style={{...btnS(C.dim,false),padding:"4px 10px",fontSize:10}} onClick={()=>setHeroState(h=>({...h,inventory:h.inventory.filter(i2=>(i2.uid||i2.id)!==(item.uid||item.id))}))} onMouseEnter={e=>{e.currentTarget.style.background=C.dim;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.dim;}}>Drop</button>
-                </>:
+                  <button style={{...btnS(C.dim,false),padding:"4px 10px",fontSize:10}} onClick={()=>dropItem(item)} onMouseEnter={e=>{e.currentTarget.style.background=C.dim;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.dim;}}>Drop</button>
+                </>:<>
                   <button style={{...btnS("#7a6234",false),padding:"4px 10px",fontSize:10}} onClick={()=>sell(item)} onMouseEnter={e=>{e.currentTarget.style.background="#7a6234";e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#7a6234";}}>{sellPrice(item)}g</button>
-                }
+                  <button style={{...btnS(C.dim,false),padding:"4px 8px",fontSize:10}} onClick={()=>dropItem(item)} onMouseEnter={e=>{e.currentTarget.style.background=C.dim;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.dim;}}>Drop</button>
+                    </>
+		}
               </div>)))}
         </div>
         {tab==="equip"&&<div style={{padding:"4px 0"}}>
@@ -1612,15 +1621,40 @@ function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundIt
   const takeAll=()=>{
     const gold=items.filter(i=>i.isGold).reduce((s,i)=>s+(i.amount||0),0);
     const realItems=items.filter(i=>!i.isGold);
-    setHeroState(h=>({...h,gold:h.gold+gold,inventory:[...h.inventory,...realItems]}));
-    setGroundItems(g=>{const n={...g};delete n[groundKey];return n;});
-    onDismiss();
+    const room=INV_MAX-(heroState.inventory||[]).length;
+    if(room<=0){
+      // No room for items, but still allow collecting gold
+      if(gold>0){
+        setHeroState(h=>({...h,gold:h.gold+gold}));
+        setGroundItems(g=>({...g,[groundKey]:(g[groundKey]||[]).filter(i=>!i.isGold)}));
+      }
+      return;
+    }
+    const toTake=realItems.slice(0,room);
+    const leftover=realItems.slice(room);
+    setHeroState(h=>({...h,gold:h.gold+gold,inventory:[...h.inventory,...toTake]}));
+    setGroundItems(g=>{
+      if(leftover.length===0){const n={...g};delete n[groundKey];return n;}
+      return {...g,[groundKey]:leftover};
+    });
+    if(leftover.length===0)onDismiss();
   };
 
-  const takeItem=(item,idx)=>{
+  const takeItem=(item)=>{
+    if((heroState.inventory||[]).length>=INV_MAX)return;
     setHeroState(h=>({...h,inventory:[...h.inventory,item]}));
     setGroundItems(g=>{
-      const updated=(g[groundKey]||[]).filter((_,j)=>j!==idx);
+      const updated=(g[groundKey]||[]).filter(i=>(i.uid||i.id)!==(item.uid||item.id));
+      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
+      return {...g,[groundKey]:updated};
+    });
+  };
+
+  const takeGold=()=>{
+    if(gold<=0)return;
+    setHeroState(h=>({...h,gold:h.gold+gold}));
+    setGroundItems(g=>{
+      const updated=(g[groundKey]||[]).filter(i=>!i.isGold);
       if(updated.length===0){const n={...g};delete n[groundKey];return n;}
       return {...g,[groundKey]:updated};
     });
@@ -1639,7 +1673,7 @@ function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundIt
   const gold=items.filter(i=>i.isGold).reduce((s,i)=>s+(i.amount||0),0);
   const realItems=items.filter(i=>!i.isGold);
 
-  // Auto-close when all items taken
+  // Auto-close when everything (items and gold) has been taken
   React.useEffect(()=>{if(items.length===0)onDismiss();},[items.length]);
 
   return(
@@ -1654,7 +1688,8 @@ function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundIt
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:6,borderRadius:4,background:"#1f1a08",border:`1px solid ${C2.border}`}}>
               <span style={{fontSize:18}}>💰</span>
               <span style={{fontSize:13,color:C2.gold,flex:1}}>{gold} gold</span>
-              <span style={{fontSize:10,color:C2.dim,fontStyle:"italic"}}>auto-collected</span>
+              <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C2.gold}`,color:C2.gold,cursor:"pointer",borderRadius:2}}
+                onClick={takeGold}>Take</button>
             </div>
           )}
           {realItems.map((item,i)=>{
@@ -1666,8 +1701,9 @@ function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundIt
                 {item.strBonus!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.strBonus}str</span>}
                 {item.armourBonus!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.armourBonus}arm</span>}
                 {item.heal!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.heal}hp</span>}
-                <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C2.green}`,color:C2.green,cursor:"pointer",borderRadius:2}}
-                  onClick={()=>takeItem(item,i)}>Take</button>
+                <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${(heroState.inventory||[]).length>=INV_MAX?"#444":C2.green}`,color:(heroState.inventory||[]).length>=INV_MAX?"#444":C2.green,cursor:(heroState.inventory||[]).length>=INV_MAX?"not-allowed":"pointer",borderRadius:2}}
+                  disabled={(heroState.inventory||[]).length>=INV_MAX}
+                  onClick={()=>takeItem(item)}>Take</button>
                 {item.type==="food"&&<button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid #2d8a4e`,color:"#2d8a4e",cursor:"pointer",borderRadius:2}}
                   onClick={()=>{
                     setHeroState(h=>({...h,health:Math.min(100,h.health+(item.heal||0))}));
@@ -2774,7 +2810,7 @@ export default function Game(){
         />
       )}
       {modal?.type==="merchant"&&merchantStock&&
-        <MerchantDialogue stock={merchantStock} setStock={setMerchantStock} heroState={heroState} setHeroState={setHeroState} onDismiss={()=>{setModal(null);setMerchantStock(null);addLog("The merchant tips his hat and moves on.");}}/>}
+        <MerchantDialogue stock={merchantStock} setStock={setMerchantStock} heroState={heroState} setHeroState={setHeroState} groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos} onDismiss={()=>{setModal(null);setMerchantStock(null);addLog("The merchant tips his hat and moves on.");}}/>}
 
       {gameState==="won"&&<WinScreen/>}
       {gameState==="castle"&&<CastleLevel heroState={heroState} setHeroState={setHeroState} addLog={addLog} onExit={()=>{setGameState("playing");addLog("You return to the island.");}} onWin={()=>{setGameState("win");addLog("🐉 The Golden Dragon falls! Victory!");}}/>}
