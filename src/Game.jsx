@@ -118,10 +118,10 @@ const ARMOUR_ITEMS = [
 const FOOD = [
   {id:"wham",   name:"Wham Bar",         type:"food",price:1,    heal:5,  emoji:"🍬"},
   {id:"munch",  name:"Monster Munch",    type:"food",price:5,    heal:10, emoji:"👾"},
-  {id:"butter", name:"Butterfinger",     type:"food",price:40,   heal:20, emoji:"🍫"},
-  {id:"fifth",  name:"5th Avenue Bar",   type:"food",price:300,  heal:40, emoji:"🍫"},
-  {id:"coffee", name:"Hot Can of Coffee",type:"food",price:2500, heal:60, emoji:"☕"},
-  {id:"cola",   name:"Coca-Cola",        type:"food",price:2500, heal:100,emoji:"🥤"},
+  {id:"butter", name:"Butterfinger",     type:"food",price:15,   heal:20, emoji:"🍫"},
+  {id:"fifth",  name:"5th Avenue Bar",   type:"food",price:50,   heal:40, emoji:"🍫"},
+  {id:"coffee", name:"Hot Can of Coffee",type:"food",price:80,   heal:60, emoji:"☕"},
+  {id:"sevenup",name:"Cherry 7-up",      type:"food",price:150,  heal:100,emoji:"🥤"},
 ];
 const BOARD_PRICE = 10;
 const MAGIC_TYPES_LIST = ["fire","lightning","iron","green","sun","frost","arcane"];
@@ -177,8 +177,14 @@ function totalArmour(eq, base) {
 }
 
 function randomMagicItem() {
-  const t=MAGIC_TYPES_LIST[rng(0,6)], f=MAGIC_FORMS_LIST[rng(0,2)];
-  return {id:`magic_${Date.now()}_${Math.random()}`,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,
+    const t=MAGIC_TYPES_LIST[rng(0,6)], f=MAGIC_FORMS_LIST[rng(0,2)], id=`magic_${Date.now()}_${Math.random()}`;
+    return magicItem(t, f, id);
+  /* return {id:`magic_${Date.now()}_${Math.random()}`,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,
+    type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]}; */
+}
+
+function magicItem(magicType, magicForm, id) {
+    return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,
     type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]};
 }
 
@@ -186,7 +192,8 @@ function generateMerchantStock() {
   const pool=[...FOOD,...ARMOUR_ITEMS,...WEAPONS];
   const shuffled=[...pool].sort(()=>Math.random()-0.5);
   const items=shuffled.slice(0,rng(4,8)).map(i=>({...i,uid:Date.now()+Math.random()}));
-  if(Math.random()<0.5) items.push({...randomMagicItem(),uid:Date.now()+Math.random()});
+    if(Math.random()<0.5)
+	items.push({...randomMagicItem(),uid:Date.now()+Math.random()});
   return items;
 }
 
@@ -280,7 +287,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
   const submit=()=>{
     const correct=riddle.a.includes(answer.trim().toLowerCase());
     if(correct){
-      setHeroState(h=>({...h,gold:h.gold+25,candles:h.candles+5}));
+      setHeroState(h=>({...h,gold:h.gold+100,candles:h.candles+5}));
       if(onDefeated) onDefeated(guardian.id);
       const disappear=[
         "With a thunderous crack, the guardian shatters into a thousand shards of light!",
@@ -289,7 +296,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
         "The guardian dissolves in a swirl of ancient magic, fading to nothing before your eyes.",
         "Roots retract, stone crumbles, water recedes — the guardian vanishes without a trace.",
       ][rng(0,4)];
-      setResult({correct:true,msg:`${disappear} +25 gold, +5 candles.`});
+      setResult({correct:true,msg:`${disappear} +100 gold, +5 candles.`});
     } else {
       const dmg=rng(1,25);
       setHeroState(h=>({...h,health:Math.max(0,h.health-dmg)}));
@@ -709,9 +716,24 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
     const reverts={};
     setHeroState(h=>{
       let nh={...h};
-      if(comps.includes("fire")){const d=rng(1,5);reverts.health=h.health;nh.health=h.health+d;addCombatLog(`${pot.name}: +${d} health.`);}
-      if(comps.includes("lightning")){const d=rng(1,5);reverts.baseSkill=h.baseSkill;nh.baseSkill=(h.baseSkill||12)+d;addCombatLog(`${pot.name}: +${d} skill.`);}
-      if(comps.includes("iron")){const d=rng(1,5);reverts.baseStrength=h.baseStrength;nh.baseStrength=(h.baseStrength||10)+d;addCombatLog(`${pot.name}: +${d} strength.`);}
+	if(comps.includes("fire")){
+	    const d=rng(1,5);
+	    reverts.health=h.health;
+	    nh.health=h.health+d;
+	    addCombatLog(`${pot.name}: +${d} health.`);
+	}
+	if(comps.includes("lightning")){
+	    const d=rng(1,5);
+	    reverts.baseSkill=h.baseSkill;
+	    nh.baseSkill=(h.baseSkill||12)+d;
+	    addCombatLog(`${pot.name}: +${d} skill.`);
+	}
+	if(comps.includes("iron")){
+	    const d=rng(1,5);
+	    reverts.baseStrength=h.baseStrength;
+	    nh.baseStrength=(h.baseStrength||10)+d;
+	    addCombatLog(`${pot.name}: +${d} strength.`);
+	}
       nh.inventory=h.inventory.filter(i=>i.id!==pot.id);
       return nh;
     });
@@ -886,7 +908,7 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
             {heroState.health===100&&<div style={{color:C.dim,fontSize:11,fontStyle:"italic",textAlign:"center"}}>You are already at full health.</div>}
           {heroState.health<100&&<div style={{color:C.dim,fontSize:11,textAlign:"center",marginTop:6}}>Tonight's stay is complimentary.</div>}
           </div>}
-          {tab==="save"&&<div style={{padding:"8px 0"}}>
+          {tab==="load/save"&&<div style={{padding:"8px 0"}}>
             <div style={{fontSize:11,color:C.dim,marginBottom:14,fontStyle:"italic",textAlign:"center"}}>"Rest here, traveller. Your tale shall be remembered."</div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <button style={{...btnS(C.gold,false),padding:"10px"}} onClick={saveGame}
@@ -2281,7 +2303,27 @@ export default function Game(){
   const [keyOpen,setKeyOpen]=useState(false);
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
-  const [groundItems,setGroundItems]=useState({"32,30": [{"id": "hp1", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp1_0"}, {"isGold": true, "amount": 49, "uid": "gold_32_30", "name": "49 gold"}], "69,58": [{"id": "hp2", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp2_1"}, {"isGold": true, "amount": 33, "uid": "gold_69_58", "name": "33 gold"}], "145,20": [{"id": "hp3", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp3_2"}, {"isGold": true, "amount": 46, "uid": "gold_145_20", "name": "46 gold"}], "186,17": [{"id": "fire_wand_g", "name": "Fire Wand", "type": "magic", "form": "wand", "magicType": "fire", "color": "#e74c3c", "cost": 25, "uid": "ground_fire_wand_g_3"}, {"isGold": true, "amount": 22, "uid": "gold_186_17", "name": "22 gold"}], "208,20": [{"id": "arc_wand_g", "name": "Arcane Wand", "type": "magic", "form": "wand", "magicType": "arcane", "color": "#9b59b6", "cost": 500, "uid": "ground_arc_wand_g_4"}, {"isGold": true, "amount": 55, "uid": "gold_208_20", "name": "55 gold"}], "28,89": [{"id": "frost_wand_g", "name": "Frost Wand", "type": "magic", "form": "wand", "magicType": "frost", "color": "#3498db", "cost": 100, "uid": "ground_frost_wand_g_5"}, {"isGold": true, "amount": 14, "uid": "gold_28_89", "name": "14 gold"}], "95,113": [{"id": "longsword_g", "name": "Long Sword", "slot": "right", "strBonus": 4, "type": "weapon", "cost": 28, "tier": 2, "uid": "ground_longsword_g_6"}, {"isGold": true, "amount": 12, "uid": "gold_95_113", "name": "12 gold"}], "112,110": [{"id": "gs_g", "name": "Great Sword", "slot": "both", "strBonus": 10, "type": "weapon", "twoHanded": true, "cost": 1500, "tier": 5, "uid": "ground_gs_g_7"}, {"isGold": true, "amount": 52, "uid": "gold_112_110", "name": "52 gold"}], "171,120": [{"id": "dagger_g", "name": "Dagger", "slot": "right", "strBonus": 1, "type": "weapon", "cost": 8, "tier": 1, "uid": "ground_dagger_g_8"}, {"isGold": true, "amount": 24, "uid": "gold_171_120", "name": "24 gold"}], "221,103": [{"id": "chain_g", "name": "Chainmail", "slot": "body", "armourBonus": 5, "type": "armour", "cost": 25, "tier": 2, "uid": "ground_chain_g_9"}, {"isGold": true, "amount": 59, "uid": "gold_221_103", "name": "59 gold"}], "32,135": [{"id": "plate_g", "name": "Plate Armour", "slot": "body", "armourBonus": 8, "type": "armour", "cost": 75, "tier": 3, "uid": "ground_plate_g_10"}, {"isGold": true, "amount": 28, "uid": "gold_32_135", "name": "28 gold"}], "73,179": [{"id": "mithril_g", "name": "Mithril Armour", "slot": "body", "armourBonus": 11, "type": "armour", "cost": 500, "tier": 4, "uid": "ground_mithril_g_11"}, {"isGold": true, "amount": 15, "uid": "gold_73_179", "name": "15 gold"}], "138,156": [{"id": "leather_g", "name": "Leather Armour", "slot": "body", "armourBonus": 2, "type": "armour", "cost": 10, "tier": 1, "uid": "ground_leather_g_12"}, {"isGold": true, "amount": 24, "uid": "gold_138_156", "name": "24 gold"}], "176,144": [{"id": "helm_g", "name": "Iron Helm", "slot": "head", "armourBonus": 3, "type": "armour", "cost": 20, "tier": 2, "uid": "ground_helm_g_13"}, {"isGold": true, "amount": 16, "uid": "gold_176_144", "name": "16 gold"}], "220,156": [{"id": "mithril_helm_g", "name": "Mithril Helm", "slot": "head", "armourBonus": 6, "type": "armour", "cost": 250, "tier": 4, "uid": "ground_mithril_helm_g_14"}, {"isGold": true, "amount": 34, "uid": "gold_220_156", "name": "34 gold"}], "39,201": [{"id": "boots_g", "name": "Iron Boots", "slot": "feet", "armourBonus": 1, "type": "armour", "cost": 8, "tier": 1, "uid": "ground_boots_g_15"}, {"isGold": true, "amount": 27, "uid": "gold_39_201", "name": "27 gold"}], "85,217": [{"id": "fire_ring_g", "name": "Fire Ring", "type": "magic", "form": "ring", "magicType": "fire", "color": "#e74c3c", "cost": 1000, "uid": "ground_fire_ring_g_16"}, {"isGold": true, "amount": 39, "uid": "gold_85_217", "name": "39 gold"}], "127,197": [{"id": "iron_ring_g", "name": "Iron Ring", "type": "magic", "form": "ring", "magicType": "iron", "color": "#95a5a6", "cost": 1000, "uid": "ground_iron_ring_g_17"}, {"isGold": true, "amount": 50, "uid": "gold_127_197", "name": "50 gold"}], "166,219": [{"id": "hp4", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp4_18"}, {"isGold": true, "amount": 33, "uid": "gold_166_219", "name": "33 gold"}], "225,235": [{"id": "hp5", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp5_19"}, {"isGold": true, "amount": 20, "uid": "gold_225_235", "name": "20 gold"}]}); // key="x,y" → [{item},...,gold:N]
+  const [groundItems,setGroundItems]=useState({
+      "32,30": [{"id": "hp1", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp1_0"}, {"isGold": true, "amount": 49, "uid": "gold_32_30", "name": "49 gold"}],
+      "69,58": [{"id": "hp2", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp2_1"}, {"isGold": true, "amount": 33, "uid": "gold_69_58", "name": "33 gold"}],
+      "145,20": [{"id": "hp3", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp3_2"}, {"isGold": true, "amount": 46, "uid": "gold_145_20", "name": "46 gold"}],
+      "186,17": [{"id": "fire_wand_g", "name": "Fire Wand", "type": "magic", "form": "wand", "magicType": "fire", "color": "#e74c3c", "cost": 25, "uid": "ground_fire_wand_g_3"}, {"isGold": true, "amount": 22, "uid": "gold_186_17", "name": "22 gold"}],
+      "208,20": [{"id": "arc_wand_g", "name": "Arcane Wand", "type": "magic", "form": "wand", "magicType": "arcane", "color": "#9b59b6", "cost": 500, "uid": "ground_arc_wand_g_4"}, {"isGold": true, "amount": 55, "uid": "gold_208_20", "name": "55 gold"}],
+      "28,89": [{"id": "frost_wand_g", "name": "Frost Wand", "type": "magic", "form": "wand", "magicType": "frost", "color": "#3498db", "cost": 100, "uid": "ground_frost_wand_g_5"}, {"isGold": true, "amount": 14, "uid": "gold_28_89", "name": "14 gold"}],
+      "95,113": [{"id": "longsword_g", "name": "Long Sword", "slot": "right", "strBonus": 4, "type": "weapon", "cost": 900, "tier": 2, "uid": "ground_longsword_g_6"}, {"isGold": true, "amount": 12, "uid": "gold_95_113", "name": "12 gold"}],
+      "112,110": [{"id": "gs_g", "name": "Great Sword", "slot": "both", "strBonus": 10, "type": "weapon", "twoHanded": true, "cost": 1500, "tier": 5, "uid": "ground_gs_g_7"}, {"isGold": true, "amount": 52, "uid": "gold_112_110", "name": "52 gold"}],
+      "171,120": [{"id": "dagger_g", "name": "Dagger", "slot": "right", "strBonus": 1, "type": "weapon", "cost": 8, "tier": 1, "uid": "ground_dagger_g_8"}, {"isGold": true, "amount": 24, "uid": "gold_171_120", "name": "24 gold"}],
+      "221,103": [{"id": "chain_g", "name": "Chainmail", "slot": "body", "armourBonus": 5, "type": "armour", "cost": 25, "tier": 2, "uid": "ground_chain_g_9"}, {"isGold": true, "amount": 59, "uid": "gold_221_103", "name": "59 gold"}],
+      "32,135": [{"id": "plate_g", "name": "Plate Armour", "slot": "body", "armourBonus": 8, "type": "armour", "cost": 75, "tier": 3, "uid": "ground_plate_g_10"}, {"isGold": true, "amount": 28, "uid": "gold_32_135", "name": "28 gold"}],
+      "73,179": [{"id": "mithril_g", "name": "Mithril Armour", "slot": "body", "armourBonus": 11, "type": "armour", "cost": 500, "tier": 4, "uid": "ground_mithril_g_11"}, {"isGold": true, "amount": 15, "uid": "gold_73_179", "name": "15 gold"}],
+      "138,156": [{"id": "leather_g", "name": "Leather Armour", "slot": "body", "armourBonus": 2, "type": "armour", "cost": 10, "tier": 1, "uid": "ground_leather_g_12"}, {"isGold": true, "amount": 24, "uid": "gold_138_156", "name": "24 gold"}],
+      "176,144": [{"id": "helm_g", "name": "Iron Helm", "slot": "head", "armourBonus": 3, "type": "armour", "cost": 20, "tier": 2, "uid": "ground_helm_g_13"}, {"isGold": true, "amount": 16, "uid": "gold_176_144", "name": "16 gold"}],
+      "220,156": [{"id": "mithril_helm_g", "name": "Mithril Helm", "slot": "head", "armourBonus": 6, "type": "armour", "cost": 250, "tier": 4, "uid": "ground_mithril_helm_g_14"}, {"isGold": true, "amount": 34, "uid": "gold_220_156", "name": "34 gold"}],
+      "39,201": [{"id": "boots_g", "name": "Iron Boots", "slot": "feet", "armourBonus": 1, "type": "armour", "cost": 8, "tier": 1, "uid": "ground_boots_g_15"}, {"isGold": true, "amount": 27, "uid": "gold_39_201", "name": "27 gold"}],
+      "85,217": [{"id": "fire_ring_g", "name": "Fire Ring", "type": "magic", "form": "ring", "magicType": "fire", "color": "#e74c3c", "cost": 1000, "uid": "ground_fire_ring_g_16"}, {"isGold": true, "amount": 39, "uid": "gold_85_217", "name": "39 gold"}],
+      "127,197": [{"id": "iron_ring_g", "name": "Iron Ring", "type": "magic", "form": "ring", "magicType": "iron", "color": "#95a5a6", "cost": 1000, "uid": "ground_iron_ring_g_17"}, {"isGold": true, "amount": 50, "uid": "gold_127_197", "name": "50 gold"}],
+      "166,219": [{"id": "hp4", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp4_18"}, {"isGold": true, "amount": 33, "uid": "gold_166_219", "name": "33 gold"}],
+      "225,235": [{"id": "hp5", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp5_19"}, {"isGold": true, "amount": 20, "uid": "gold_225_235", "name": "20 gold"}]}); // key="x,y" → [{item},...,gold:N]
   const [gameState,setGameState]=useState("playing"); // playing|won|dead
   const canvasRef=useRef(null);
   const pathRef=useRef([]);
