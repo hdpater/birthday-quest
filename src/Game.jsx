@@ -794,10 +794,12 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
 
 
 // ── Shop dialogues ────────────────────────────────────────────────────────────
-function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,groundItems,setGroundItems,onDismiss}){
+function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,defeatedTournament,setDefeatedTournament,defeatedTournamentRef,hasMap,setHasMap,groundItems,setGroundItems,onDismiss}){
   const [tab,setTab]=useState("buy");
   const [saveMsg,setSaveMsg]=React.useState("");
   const SAVE_KEY="birthday_quest_save";
+  const storageSet=async(k,v)=>{try{if(window.storage){await window.storage.set(k,v);}else{localStorage.setItem(k,v);}}catch{localStorage.setItem(k,v);}};
+  const storageGet=async(k)=>{try{if(window.storage){const r=await window.storage.get(k);return r?r.value:null;}}catch{}return localStorage.getItem(k);};
   const computeChecksum=(data)=>{
     const str=JSON.stringify(data); let h=0;
     for(let i=0;i<str.length;i++){h=(Math.imul(31,h)+str.charCodeAt(i))|0;}
@@ -807,14 +809,13 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
     try{
       const saveData={heroState,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},hasMap,timestamp:Date.now()};
       const cs=computeChecksum(saveData);
-      await window.storage.set(SAVE_KEY,JSON.stringify({...saveData,checksum:cs}));
+      await storageSet(SAVE_KEY,JSON.stringify({...saveData,checksum:cs}));
       setSaveMsg("✓ Game saved!");setTimeout(()=>setSaveMsg(""),2500);
     }catch(e){console.error("Save error:",e);setSaveMsg("✗ Save failed: "+String(e.message||e));}
   };
   const loadGame=async()=>{
     try{
-      const res=await window.storage.get(SAVE_KEY);
-      const raw=res?res.value:null;
+      const raw=await storageGet(SAVE_KEY);
       if(!raw){setSaveMsg("No save found.");return;}
       const{checksum:cs,...saveData}=JSON.parse(raw);
       if(cs!==computeChecksum(saveData)){setSaveMsg("✗ Save corrupted!");return;}
@@ -832,7 +833,7 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
       setSaveMsg("✓ Game loaded!");setTimeout(()=>setSaveMsg(""),2500);
     }catch(e){console.error("Load error:",e);setSaveMsg("✗ Load failed: "+String(e.message||e));}
   };
-  const hasSave=()=>{try{return!!window.storage.get(SAVE_KEY).then(r=>r!=null);}catch{return false;}};
+  const hasSave=()=>{try{return!!localStorage.getItem(SAVE_KEY);}catch{return false;}};
   const inv=heroState.inventory||[];
   const eat=(food)=>{
     const idx=inv.findIndex(i=>i.id===food.id&&i.type==="food");
@@ -2699,7 +2700,7 @@ export default function Game(){
       </div>
       {/* MODALS */}
       {modal?.type==="building"&&modal.data.type==="tavern"&&
-        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} defeatedGuardians={defeatedGuardians} setDefeatedGuardians={(s)=>{setDefeatedGuardians(s);defeatedGuardiansRef.current=s;}} groundItems={groundItems} setGroundItems={setGroundItems} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
+        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} defeatedGuardians={defeatedGuardians} setDefeatedGuardians={(s)=>{setDefeatedGuardians(s);defeatedGuardiansRef.current=s;}} defeatedTournament={defeatedTournament} setDefeatedTournament={(s)=>{setDefeatedTournament(s);defeatedTournamentRef.current=s;}} hasMap={hasMap} setHasMap={setHasMap} groundItems={groundItems} setGroundItems={setGroundItems} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
       {modal?.type==="building"&&modal.data.type==="armourer"&&
         <ArmourerDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} onDismiss={()=>{setModal(null);addLog(`You leave ${modal.data.name}.`);}}/>}
       {modal?.type==="building"&&modal.data.type==="arena"&&
