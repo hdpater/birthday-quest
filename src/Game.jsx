@@ -2305,11 +2305,11 @@ export default function Game(){
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
   const [groundItems,setGroundItems]=useState({
-      "32,30": [{...magicItem("fire","potion","hp1"),uid:"ground_fire_potion0"}, {...gold(49),"uid": "gold_32_30"}],
-      "69,58": [{...magicItem("fire","potion","hp1"),uid:"ground_fire_potion1"}, {"isGold": true, "amount": 33, "uid": "gold_69_58", "name": "33 gold"}],
-      "145,20": [{...magicItem("fire","potion","hp1"),uid:"ground_fire_potion2"}, {"isGold": true, "amount": 46, "uid": "gold_145_20", "name": "46 gold"}],
-      "186,17": [{"id": "fire_wand_g", "name": "Fire Wand", "type": "magic", "form": "wand", "magicType": "fire", "color": "#e74c3c", "cost": 25, "uid": "ground_fire_wand_g_3"}, {"isGold": true, "amount": 22, "uid": "gold_186_17", "name": "22 gold"}],
-      "208,20": [{"id": "arc_wand_g", "name": "Arcane Wand", "type": "magic", "form": "wand", "magicType": "arcane", "color": "#9b59b6", "cost": 500, "uid": "ground_arc_wand_g_4"}, {"isGold": true, "amount": 55, "uid": "gold_208_20", "name": "55 gold"}],
+      "32,30": [{...magicItem("fire","potion","fire_pot_g"),uid:"ground_fire_potion0"}, {...gold(49),uid:"gold_32_30"}],
+      "69,58": [{...magicItem("fire","potion","fire_pot_g"),uid:"ground_fire_potion1"}, {...gold(33),uid:"gold_69_58"}],
+      "145,20": [{...magicItem("fire","potion","fire_pot_g"),uid:"ground_fire_potion2"}, {...gold(46),uid:"gold_145_20"}],
+      "186,17": [{...magicItem("fire","wand","fire_wand_g"),uid:"ground_fire_wand3"}, {...gold(22),uid:"gold_186_17"}],
+      "208,20": [{...magicItem("arcane","wand","arc_wand_g"),uid:"ground_arc_wand4"}, {...gold(55),uid:"gold_208_20"}],
       "28,89": [{"id": "frost_wand_g", "name": "Frost Wand", "type": "magic", "form": "wand", "magicType": "frost", "color": "#3498db", "cost": 100, "uid": "ground_frost_wand_g_5"}, {"isGold": true, "amount": 14, "uid": "gold_28_89", "name": "14 gold"}],
       "95,113": [{"id": "longsword_g", "name": "Long Sword", "slot": "right", "strBonus": 4, "type": "weapon", "cost": 900, "tier": 2, "uid": "ground_longsword_g_6"}, {"isGold": true, "amount": 12, "uid": "gold_95_113", "name": "12 gold"}],
       "112,110": [{"id": "gs_g", "name": "Great Sword", "slot": "both", "strBonus": 10, "type": "weapon", "twoHanded": true, "cost": 1500, "tier": 5, "uid": "ground_gs_g_7"}, {"isGold": true, "amount": 52, "uid": "gold_112_110", "name": "52 gold"}],
