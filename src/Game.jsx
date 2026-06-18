@@ -189,6 +189,15 @@ function gold(amount) {
     return {isGold:true,amount:amount,name:`${amount} gold`};
 }
 
+// Single source of truth for ground-spawned weapons/armour/food:
+// looks up the canonical item definition by id from WEAPONS/ARMOUR_ITEMS/FOOD
+// so ground items can never drift out of sync with shop stats.
+function groundItem(id, uid) {
+  const found = [...WEAPONS, ...ARMOUR_ITEMS, ...FOOD].find(i => i.id === id);
+  if (!found) { console.error(`groundItem: unknown id "${id}"`); return null; }
+  return {...found, uid};
+}
+
 function generateMerchantStock() {
   const pool=[...FOOD,...ARMOUR_ITEMS,...WEAPONS];
   const shuffled=[...pool].sort(()=>Math.random()-0.5);
@@ -338,97 +347,10 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
 }
 
 // ── Dragon Encounter ──────────────────────────────────────────────────────────
-function TournamentEncounter({defeatedTournament,setDefeatedTournament,
-    heroState,setHeroState,addLog,onDismiss,onDead}){
+function TournamentFight({defeatedTournament,setDefeatedTournament,
+    heroState,setHeroState,addLog,groundItems,setGroundItems,heroPos,onDismiss,onDead}){
   const fighter=TOURNAMENT_FIGHTERS.find(f=>!defeatedTournament.has(f.id));
   const allDone=!fighter;
-  const [phase,setPhase]=React.useState("intro");
-  const [fHp,setFHp]=React.useState(100);
-  const [hHp,setHHp]=React.useState(heroState.health);
-  const [log,setLog]=React.useState([]);
-  const [poisoned,setPoisoned]=React.useState(false);
-  const addL=msg=>setLog(p=>[msg,...p].slice(0,10));
-
-  const portrait=(f)=>f?{backgroundImage:`url(${TOURNAMENT_IMG})`,
-    backgroundSize:"200% 200%",
-    backgroundPosition:`${f.col*100}% ${f.row*100}%`,
-    width:140,height:140,flexShrink:0,borderRadius:4}:{};
-
-  const eff=(stat,hp)=>Math.max(1,stat*(hp/100));
-  const localRandDmg=(str,arm)=>Math.max(0,rng(0,Math.round(str))-rng(0,arm));
-  const hitC=(a,d)=>a/(a+d);
-
-  const fight=()=>{
-    if(!fighter||fHp<=0)return;
-    let mHp=fHp,hHpCur=hHp,lines=[],newPoisoned=poisoned;
-    const eq=heroState.equipped||{};
-    const hArm=totalArmour(eq,heroState.baseArmour||0);
-    const hSkl=eff(heroState.baseSkill,hHpCur);
-    const mSkl=eff(fighter.skill,mHp);
-    const ring=eq.finger;
-
-    // Fire ring heal
-    if(ring&&MAGIC_COMPS[ring.magicType]?.includes("fire")){
-      const g=Math.min(1,100-hHpCur);hHpCur=Math.min(100,hHpCur+1);
-      if(g>0)lines.push(`Ring heals 1 HP.`);
-    }
-    // Poison tick
-    if(newPoisoned){const d=rng(1,3);hHpCur=Math.max(0,hHpCur-d);lines.push(`Poison: -${d} HP.`);}
-
-    // Hero attacks
-    const atks=fighter.weaponAtks||weaponAttacks(eq);
-    for(const atk of atks){
-      if(mHp<=0)break;
-      // For fighters with custom weaponAtks (e.g. Kenshiro): damage = 2*rand(0,str+bonus) - rand(0,armour)
-      const str=fighter.weaponAtks
-        ?eff(fighter.strength+(atk.bonus||0),hHpCur)
-        :eff(heroState.baseStrength+(atk.bonus||0),hHpCur);
-      if(Math.random()<hitC(hSkl,mSkl)){
-        const d=atk.twoHanded?localRandDmg(str*2,fighter.armour):localRandDmg(str,fighter.armour);
-        mHp=Math.max(0,mHp-d);lines.push(`${atk.label}: ${d} dmg.`);
-      } else lines.push(`${atk.label}: miss.`);
-    }
-    // Lightning ring extra attack
-    if(ring&&MAGIC_COMPS[ring.magicType]?.includes("lightning")){
-      if(Math.random()<hitC(hSkl,mSkl)){
-        const d=localRandDmg(eff(heroState.baseStrength,hHpCur),fighter.armour);
-        mHp=Math.max(0,mHp-d);lines.push(`Ring attack: ${d} dmg.`);
-      }
-    }
-
-    if(mHp<=0){
-      setFHp(0);lines.push(`${fighter.name} is defeated!`);setLog(lines.slice(0,10));
-      setTimeout(()=>{
-        const nd=new Set(defeatedTournament);nd.add(fighter.id);
-        setDefeatedTournament(nd);
-        const newItems=(fighter.loot||[]).map((l,i)=>({...l,uid:l.uid||Date.now()+i}));
-        setHeroState(h=>({...h,candles:h.candles+fighter.candles,
-          inventory:[...h.inventory,...newItems]}));
-        addLog(`🏆 ${fighter.name} defeated! +${fighter.candles} candles!`
-          +(newItems.length?` Found: ${newItems.map(i=>i.name).join(", ")}`:""));
-        setPhase("victory");
-      },400);return;
-    }
-
-    // Fighter attacks
-    for(let i=0;i<fighter.attacks;i++){
-      if(hHpCur<=0)break;
-      if(Math.random()<hitC(eff(fighter.skill,mHp),hSkl)){
-        const fStr=fighter.twoHanded
-          ?localRandDmg(eff(fighter.strength,mHp)*2,hArm)
-          :localRandDmg(eff(fighter.strength,mHp),hArm);
-        hHpCur=Math.max(0,hHpCur-fStr);
-        lines.push(`${fighter.name}: ${fStr} dmg.`);
-        if(fighter.poisonDagger&&!newPoisoned&&Math.random()<0.4){
-          newPoisoned=true;lines.push("☠ You are poisoned!");
-        }
-      } else lines.push(`${fighter.name} misses.`);
-    }
-    setFHp(mHp);setHHp(hHpCur);setPoisoned(newPoisoned);
-    setLog(lines.slice(0,10));
-    setHeroState(h=>({...h,health:hHpCur}));
-    if(hHpCur<=0)setTimeout(()=>setPhase("dead"),200);
-  };
 
   const btnS2=(col,dis)=>({padding:"8px 16px",background:"transparent",
     border:`1.5px solid ${dis?"#333":col}`,color:dis?"#444":col,
@@ -448,71 +370,51 @@ function TournamentEncounter({defeatedTournament,setDefeatedTournament,
     </div>
   );
 
+  // Convert the tournament fighter into a CombatScreen-compatible monster shape
+  const monster={
+    id:fighter.id,name:fighter.name,col:fighter.col,row:fighter.row,
+    strength:fighter.strength,skill:fighter.skill,armour:fighter.armour,
+    attacks:fighter.attacks,twoHanded:fighter.twoHanded,
+    weaponAtks:fighter.weaponAtks,poisonDagger:fighter.poisonDagger,
+    maxHealth:100,level:Math.round((fighter.strength+fighter.skill)/2),
+    dialogue:fighter.dialogue,
+  };
+
   return(
-    <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",
-      alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C.panel,border:"2px solid #8a3a20",borderRadius:12,
-        overflow:"hidden",maxWidth:480,width:"95%",display:"flex",flexDirection:"column"}}>
-        <div style={{background:"#1a0d05",padding:"10px 16px",borderBottom:"1px solid #3d2f18",
-          display:"flex",alignItems:"center",gap:12}}>
-          <div style={portrait(fighter)}/>
-          <div style={{flex:1}}>
-            <div style={{color:"#ff6b00",fontSize:15,fontWeight:"bold"}}>{fighter.name}</div>
-            <div style={{color:C.dim,fontSize:10,marginTop:4,fontStyle:"italic"}}>"{fighter.dialogue}"</div>
-            <div style={{color:C.dim,fontSize:10,marginTop:4}}>
-              STR:{fighter.strength} SKL:{fighter.skill} ARM:{fighter.armour} ATK:{fighter.attacks}×
-              {fighter.poisonDagger&&" ☠poison"}
-            </div>
-          </div>
-        </div>
-        <div style={{padding:"8px 16px",borderBottom:"1px solid #3d2f18",display:"flex",gap:16}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:9,color:C.dim,marginBottom:2}}>YOU {poisoned?"☠":""}</div>
-            <div style={{height:6,background:"#1a1208",borderRadius:3,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${hHp}%`,borderRadius:3,
-                background:hHp>60?"#2d8a4e":hHp>25?"#c9a02b":"#c0392b"}}/>
-            </div>
-          </div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:9,color:C.dim,marginBottom:2}}>{fighter.name.toUpperCase()}</div>
-            <div style={{height:6,background:"#1a1208",borderRadius:3,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${fHp}%`,borderRadius:3,background:"#c0392b"}}/>
-            </div>
-          </div>
-        </div>
-        <div style={{height:110,overflowY:"auto",padding:"6px 14px",background:"#0d0a06",
-          borderBottom:"1px solid #3d2f18",fontSize:10,color:C.dim}}>
-          {log.length===0&&<div style={{color:"#555"}}>Prepare yourself...</div>}
-          {log.map((l,i)=><div key={i} style={{marginBottom:1,color:i===0?C.text:C.dim}}>{l}</div>)}
-        </div>
-        <div style={{padding:"10px 16px"}}>
-          {(phase==="intro"||phase==="fight")&&<div style={{display:"flex",gap:8}}>
-            <button style={btnS2("#c0392b",false)} onClick={()=>{setPhase("fight");fight();}}>⚔ Fight</button>
-            <button style={btnS2(C.dim,false)} onClick={onDismiss}>Flee</button>
-          </div>}
-          {phase==="victory"&&<div>
-            <div style={{color:"#6fcf97",fontSize:13,marginBottom:10}}>
-              🏆 Victory! +{fighter.candles} candles{fighter.loot?.length?` · Found: ${fighter.loot.map(i=>i.name).join(", ")}`:""}.</div>
-            <button style={btnS2("#c9a84c",false)} onClick={onDismiss}>Continue</button>
-          </div>}
-          {phase==="dead"&&<div>
-            <div style={{color:"#c0392b",fontSize:13,marginBottom:10}}>💀 You have fallen in the tournament.</div>
-            <button style={btnS2("#c0392b",false)} onClick={()=>{onDismiss();onDead&&onDead();}}>Game Over</button>
-          </div>}
-        </div>
-      </div>
-    </div>
+    <CombatScreen
+      monster={monster}
+      heroState={heroState} setHeroState={setHeroState}
+      isDragon={false}
+      isTournament={true}
+      fixedLoot={fighter.loot}
+      fixedCandles={fighter.candles}
+      addLog={addLog}
+      groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos}
+      onVictory={(mon)=>{
+        const f=TOURNAMENT_FIGHTERS.find(x=>x.id===mon.id);
+        if(!f){onDismiss();return;}
+        const nd=new Set(defeatedTournament);nd.add(f.id);
+        setDefeatedTournament(nd);
+        addLog(`🏆 ${f.name} defeated! +${f.candles} candles!`
+          +((f.loot&&f.loot.length)?` Found: ${f.loot.map(i=>i.name).join(", ")}`:""));
+        onDismiss();
+      }}
+      onDefeat={()=>{onDismiss();onDead&&onDead();}}
+      onFlee={()=>{addLog(`You flee from ${fighter.name}!`);onDismiss();}}
+    />
   );
 }
 
 
-function VictoryPanel({loot,inventory,equipped,INV_MAX,C,btnS,green,setHeroState,doEquipWeapon,onContinue}){
+function VictoryPanel({loot,inventory,equipped,INV_MAX,C,btnS,green,setHeroState,doEquipWeapon,groundItems,setGroundItems,heroPos,onContinue}){
   const overFull=inventory.length>INV_MAX;
   return(
     <div>
       <div style={{color:"#6fcf97",fontSize:15,fontWeight:"bold",marginBottom:8,textAlign:"center"}}>🏆 Victory!</div>
       <div style={{background:"#0d2a1a",border:"1px solid #2d8a4e",borderRadius:5,padding:"8px 10px",marginBottom:8,fontSize:11}}>
-        <div style={{color:"#6fcf97",marginBottom:3}}>💰 <strong>{loot.gold} gold</strong> found.</div>
+        {loot.candles
+          ?<div style={{color:"#f1c40f",marginBottom:3}}>🕯 <strong>+{loot.candles} candles</strong> earned.</div>
+          :<div style={{color:"#6fcf97",marginBottom:3}}>💰 <strong>{loot.gold} gold</strong> found.</div>}
         {loot.items.map((item,i)=><div key={i} style={{color:"#a8d8b8",marginTop:2}}>📦 {item.name}</div>)}
         {loot.items.length===0&&<div style={{color:"#7a6a4a"}}>No items found.</div>}
         {loot.levelUp&&<div style={{color:"#f1c40f",marginTop:6,fontWeight:"bold"}}>
@@ -533,7 +435,13 @@ function VictoryPanel({loot,inventory,equipped,INV_MAX,C,btnS,green,setHeroState
                   whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{item.name}</span>
                 <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
                   border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2,flexShrink:0}}
-                  onClick={()=>setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==i)}))}>
+                  onClick={()=>{
+                    if(heroPos&&setGroundItems){
+                      const key=`${heroPos.x},${heroPos.y}`;
+                      setGroundItems(g=>({...g,[key]:[...(g[key]||[]),item]}));
+                    }
+                    setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==i)}));
+                  }}>
                   Drop
                 </button>
                 {item.type==="food"&&(
@@ -582,10 +490,12 @@ function VictoryPanel({loot,inventory,equipped,INV_MAX,C,btnS,green,setHeroState
 }
 
 // ── Combat Screen ─────────────────────────────────────────────────────────────
-function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefeat,onFlee,addLog}){
+function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,fixedLoot,fixedCandles,onVictory,onDefeat,onFlee,addLog,groundItems,setGroundItems,heroPos}){
   const [mon,setMon]=useState({...monster,health:monster.maxHealth||100});
   const [potionReverts,setPotionReverts]=useState({});
-  const [combatLog,setCombatLog]=useState([`⚔ You face the ${monster.name}!`]);
+  const [combatLog,setCombatLog]=useState(monster.dialogue
+    ?[`⚔ You face the ${monster.name}!`,`"${monster.dialogue}"`]
+    :[`⚔ You face the ${monster.name}!`]);
   const addCombatLog=msg=>setCombatLog(p=>[msg,...p].slice(0,20));
   const [done,setDone]=useState(null); // "won"|"fled"|"dead"
   const [poisoned,setPoisoned]=useState(false);
@@ -609,6 +519,13 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
     }
     setDone(outcome);
     if(outcome==="won"){
+      if(isTournament){
+        // Tournament fighters drop fixed named loot + fixed candles, not random gold/items
+        const lootItems=(fixedLoot||[]).map((l,i)=>({...l,uid:l.uid||Date.now()+i}));
+        setLoot({gold:0,items:lootItems,levelUp:false,levelUpStat:null,candles:fixedCandles||0});
+        setHeroState(h=>({...h,candles:(h.candles||0)+(fixedCandles||0),inventory:[...h.inventory,...lootItems]}));
+        return;
+      }
       const gold=rng(5+mon.level,10+mon.level*4);
       const lootItems=[];
       if(Math.random()<0.75){
@@ -645,7 +562,7 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
     if(newPoisoned){const pd=rng(1,3);hHp=Math.max(0,hHp-pd);lines.push(`☠ Poison: -${pd} HP.`);}
     if(hHp<=0){lines.forEach(addCombatLog);setHeroState(h=>({...h,health:0}));endCombat("dead");return;}
 
-    // Hero attacks
+    // Hero attacks (always use the hero's own weapon stats — normal for every fighter)
     const extraAtk=ring&&MAGIC_COMPS[ring.magicType]?.includes("lightning")?1:0;
     const totalAtks=[...atks,...Array(extraAtk).fill({label:"Ring Attack",bonus:0})];
     for(const atk of totalAtks){
@@ -660,19 +577,25 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
       } else lines.push(`${atk.label}: miss.`);
     }
 
-    // Monster attacks
+    // Monster/fighter attacks
     if(mHp>0){
-      const effAtks=effCeil(mon.attacks,mHp);
+      // Tournament fighters with weaponAtks (e.g. Kenshiro) use their own named weapons,
+      // each attacking once per round with double damage: 2*rand(0,fighter.strength+bonus)-rand(0,armour)
+      const usingFighterAtks=!!mon.weaponAtks;
+      const fighterAtks=usingFighterAtks?mon.weaponAtks:null;
+      const effAtks=usingFighterAtks?fighterAtks.length:effCeil(mon.attacks,mHp);
       for(let a=0;a<effAtks;a++){
-        const mStr=eff(mon.strength,mHp);
+        const atk=usingFighterAtks?fighterAtks[a]:null;
+        const mStr=usingFighterAtks?eff((mon.strength||0)+(atk.bonus||0),mHp):eff(mon.strength,mHp);
         const mSkl=eff(mon.skill,mHp);
         const hSkl=eff(heroState.baseSkill,hHp);
         if(Math.random()<hitChance(mSkl,hSkl)){
-          const d=randDmg(mStr,armour);
+          const twoH=usingFighterAtks?atk.twoHanded:mon.twoHanded;
+          const d=twoH?randDmg(mStr*2,armour):randDmg(mStr,armour);
           hHp=Math.max(0,hHp-d);
-          lines.push(`${mon.name} hits: ${d} dmg.`);
+          lines.push(`${mon.name}${usingFighterAtks?` (${atk.label})`:""}: ${d} dmg.`);
           if(mon.poisonDagger&&!newPoisoned&&Math.random()<0.4){newPoisoned=true;lines.push("☠ You are poisoned!");}
-        } else lines.push(`${mon.name} misses.`);
+        } else lines.push(`${mon.name}${usingFighterAtks?` (${atk.label})`:""} misses.`);
         if(hHp<=0) break;
       }
     }
@@ -752,6 +675,10 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
         <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
           {isDragon
             ? <img src={DRAGON_IMG} alt="Dragon" style={{width:120,height:120,objectFit:"cover",flexShrink:0}}/>
+            : isTournament
+            ? <div style={{width:120,height:120,flexShrink:0,borderRadius:4,overflow:"hidden",
+                backgroundImage:`url(${TOURNAMENT_IMG})`,backgroundSize:"200% 200%",
+                backgroundPosition:`${mon.col*100}% ${mon.row*100}%`}}/>
             : <MonsterPortrait col={mon.col} row={mon.row} size={120}/>
           }
           <div style={{padding:"10px 14px",flex:1}}>
@@ -801,7 +728,10 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,onVictory,onDefea
               green={C.green}
               setHeroState={setHeroState}
               doEquipWeapon={doEquipWeapon}
-              onContinue={()=>{addLog(`Victory! +${loot.gold}g${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`);onVictory(mon);}}
+              groundItems={groundItems}
+              setGroundItems={setGroundItems}
+              heroPos={heroPos}
+              onContinue={()=>{addLog(loot.candles?`Victory! +${loot.candles} candles${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`:`Victory! +${loot.gold}g${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`);onVictory(mon);}}
             />}
           {done==="fled"&&<div style={{textAlign:"center"}}><div style={{color:C.dim,fontSize:13,marginBottom:8}}>You flee into the shadows.</div><button style={btnS(C.gold,false)} onClick={onFlee} onMouseEnter={e=>{e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.gold;}}>Continue</button></div>}
           {done==="dead"&&<div style={{textAlign:"center"}}><div style={{color:C.red,fontSize:14,marginBottom:8}}>💀 You have fallen.</div><button style={btnS(C.red,false)} onClick={onDefeat} onMouseEnter={e=>{e.currentTarget.style.background=C.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.red;}}>Game Over</button></div>}
@@ -2304,27 +2234,28 @@ export default function Game(){
   const [keyOpen,setKeyOpen]=useState(false);
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
-  const [groundItems,setGroundItems]=useState({
-      "32,30": [{...magicItem("fire","potion","fire_pot_g"),uid:"ground_fire_potion0"}, {...gold(49),uid:"gold_32_30"}],
-      "69,58": [{...magicItem("fire","potion","fire_pot_g"),uid:"ground_fire_potion1"}, {...gold(33),uid:"gold_69_58"}],
-      "145,20": [{...magicItem("fire","potion","fire_pot_g"),uid:"ground_fire_potion2"}, {...gold(46),uid:"gold_145_20"}],
-      "186,17": [{...magicItem("fire","wand","fire_wand_g"),uid:"ground_fire_wand3"}, {...gold(22),uid:"gold_186_17"}],
-      "208,20": [{...magicItem("arcane","wand","arc_wand_g"),uid:"ground_arc_wand4"}, {...gold(55),uid:"gold_208_20"}],
-      "28,89": [{"id": "frost_wand_g", "name": "Frost Wand", "type": "magic", "form": "wand", "magicType": "frost", "color": "#3498db", "cost": 100, "uid": "ground_frost_wand_g_5"}, {"isGold": true, "amount": 14, "uid": "gold_28_89", "name": "14 gold"}],
-      "95,113": [{"id": "longsword_g", "name": "Long Sword", "slot": "right", "strBonus": 4, "type": "weapon", "cost": 900, "tier": 2, "uid": "ground_longsword_g_6"}, {"isGold": true, "amount": 12, "uid": "gold_95_113", "name": "12 gold"}],
-      "112,110": [{"id": "gs_g", "name": "Great Sword", "slot": "both", "strBonus": 10, "type": "weapon", "twoHanded": true, "cost": 1500, "tier": 5, "uid": "ground_gs_g_7"}, {"isGold": true, "amount": 52, "uid": "gold_112_110", "name": "52 gold"}],
-      "171,120": [{"id": "dagger_g", "name": "Dagger", "slot": "right", "strBonus": 1, "type": "weapon", "cost": 8, "tier": 1, "uid": "ground_dagger_g_8"}, {"isGold": true, "amount": 24, "uid": "gold_171_120", "name": "24 gold"}],
-      "221,103": [{"id": "chain_g", "name": "Chainmail", "slot": "body", "armourBonus": 5, "type": "armour", "cost": 25, "tier": 2, "uid": "ground_chain_g_9"}, {"isGold": true, "amount": 59, "uid": "gold_221_103", "name": "59 gold"}],
-      "32,135": [{"id": "plate_g", "name": "Plate Armour", "slot": "body", "armourBonus": 8, "type": "armour", "cost": 75, "tier": 3, "uid": "ground_plate_g_10"}, {"isGold": true, "amount": 28, "uid": "gold_32_135", "name": "28 gold"}],
-      "73,179": [{"id": "mithril_g", "name": "Mithril Armour", "slot": "body", "armourBonus": 11, "type": "armour", "cost": 500, "tier": 4, "uid": "ground_mithril_g_11"}, {"isGold": true, "amount": 15, "uid": "gold_73_179", "name": "15 gold"}],
-      "138,156": [{"id": "leather_g", "name": "Leather Armour", "slot": "body", "armourBonus": 2, "type": "armour", "cost": 10, "tier": 1, "uid": "ground_leather_g_12"}, {"isGold": true, "amount": 24, "uid": "gold_138_156", "name": "24 gold"}],
-      "176,144": [{"id": "helm_g", "name": "Iron Helm", "slot": "head", "armourBonus": 3, "type": "armour", "cost": 20, "tier": 2, "uid": "ground_helm_g_13"}, {"isGold": true, "amount": 16, "uid": "gold_176_144", "name": "16 gold"}],
-      "220,156": [{"id": "mithril_helm_g", "name": "Mithril Helm", "slot": "head", "armourBonus": 6, "type": "armour", "cost": 250, "tier": 4, "uid": "ground_mithril_helm_g_14"}, {"isGold": true, "amount": 34, "uid": "gold_220_156", "name": "34 gold"}],
-      "39,201": [{"id": "boots_g", "name": "Iron Boots", "slot": "feet", "armourBonus": 1, "type": "armour", "cost": 8, "tier": 1, "uid": "ground_boots_g_15"}, {"isGold": true, "amount": 27, "uid": "gold_39_201", "name": "27 gold"}],
-      "85,217": [{"id": "fire_ring_g", "name": "Fire Ring", "type": "magic", "form": "ring", "magicType": "fire", "color": "#e74c3c", "cost": 1000, "uid": "ground_fire_ring_g_16"}, {"isGold": true, "amount": 39, "uid": "gold_85_217", "name": "39 gold"}],
-      "127,197": [{"id": "iron_ring_g", "name": "Iron Ring", "type": "magic", "form": "ring", "magicType": "iron", "color": "#95a5a6", "cost": 1000, "uid": "ground_iron_ring_g_17"}, {"isGold": true, "amount": 50, "uid": "gold_127_197", "name": "50 gold"}],
-      "166,219": [{"id": "hp4", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp4_18"}, {"isGold": true, "amount": 33, "uid": "gold_166_219", "name": "33 gold"}],
-      "225,235": [{"id": "hp5", "name": "Health Potion", "type": "consumable", "healAmount": 30, "cost": 15, "tier": 1, "uid": "ground_hp5_19"}, {"isGold": true, "amount": 20, "uid": "gold_225_235", "name": "20 gold"}]}); // key="x,y" → [{item},...,gold:N]
+    const [groundItems,setGroundItems]=useState({
+    "32,30": [{...magicItem("fire","potion","fire_pot_g"),uid:"fire_pot_g"}, {...gold(49),uid:"gold_32_30"}],
+    "69,58": [{...magicItem("fire","potion","fire_pot_g2"),uid:"fire_pot_g2"}, {...gold(33),uid:"gold_69_58"}],
+    "145,20": [{...magicItem("fire","potion","fire_pot_g3"),uid:"fire_pot_g3"}, {...gold(46),uid:"gold_145_20"}],
+    "186,17": [{...magicItem("fire","wand","fire_wand_g"),uid:"fire_wand_g"}, {...gold(22),uid:"gold_186_17"}],
+    "208,20": [{...magicItem("arcane","wand","arc_wand_g"),uid:"arc_wand_g"}, {...gold(55),uid:"gold_208_20"}],
+    "28,89": [{...magicItem("frost","wand","frost_wand_g"),uid:"frost_wand_g"}, {...gold(14),uid:"gold_28_89"}],
+    "95,113": [groundItem("longsword","ground_longsword_95_113"), {...gold(12),uid:"gold_95_113"}],
+    "112,110": [groundItem("greatsword","ground_greatsword_112_110"), {...gold(52),uid:"gold_112_110"}],
+    "171,120": [groundItem("dagger","ground_dagger_171_120"), {...gold(24),uid:"gold_171_120"}],
+    "221,103": [groundItem("chainmail","ground_chainmail_221_103"), {...gold(59),uid:"gold_221_103"}],
+    "32,135": [groundItem("plate","ground_plate_32_135"), {...gold(28),uid:"gold_32_135"}],
+    "73,179": [groundItem("mithril","ground_mithril_73_179"), {...gold(15),uid:"gold_73_179"}],
+    "138,156": [groundItem("leather","ground_leather_138_156"), {...gold(24),uid:"gold_138_156"}],
+    "176,144": [groundItem("ironhelm","ground_ironhelm_176_144"), {...gold(16),uid:"gold_176_144"}],
+    "220,156": [groundItem("mithrilhelm","ground_mithrilhelm_220_156"), {...gold(34),uid:"gold_220_156"}],
+    "39,201": [groundItem("boots","ground_boots_39_201"), {...gold(27),uid:"gold_39_201"}],
+    "85,217": [{...magicItem("fire","ring","fire_ring_g"),uid:"fire_ring_g"}, {...gold(39),uid:"gold_85_217"}],
+    "127,197": [{...magicItem("iron","ring","iron_ring_g"),uid:"iron_ring_g"}, {...gold(50),uid:"gold_127_197"}],
+    "166,219": [groundItem("sevenup","ground_sevenup_166_219"), {...gold(33),uid:"gold_166_219"}],
+    "225,235": [groundItem("coffee","ground_coffee_225_235"), {...gold(20),uid:"gold_225_235"}],
+  }); // key="x,y" → [{item},...,gold:N] — items resolved from canonical WEAPONS/ARMOUR_ITEMS/FOOD/magicItem()
   const [gameState,setGameState]=useState("playing"); // playing|won|dead
   const canvasRef=useRef(null);
   const pathRef=useRef([]);
@@ -2802,11 +2733,12 @@ export default function Game(){
           }}
           onDismiss={()=>{setModal(null);addLog(`You leave ${modal.data.name}.`);}}/>}
       {modal?.type==="tournament"&&
-        <TournamentEncounter
+        <TournamentFight
           defeatedTournament={defeatedTournament}
           setDefeatedTournament={(s)=>{setDefeatedTournament(s);defeatedTournamentRef.current=s;}}
           heroState={heroState} setHeroState={setHeroState}
           addLog={addLog}
+          groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos}
           onDead={()=>{setModal(null);setGameState("dead");}}
           onDismiss={()=>setModal(null)}/>}
       {modal?.type==="combat"&&
@@ -2814,6 +2746,7 @@ export default function Game(){
           monster={modal.data} heroState={heroState} setHeroState={setHeroState}
           isDragon={modal.data.isDragon}
           addLog={addLog}
+          groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos}
           onVictory={(mon)=>{
             if(mon.isDragon){
               setHeroState(h=>({...h,candles:h.candles+10}));
