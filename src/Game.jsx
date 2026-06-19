@@ -406,84 +406,244 @@ function TournamentFight({defeatedTournament,setDefeatedTournament,
 }
 
 
-function VictoryPanel({loot,inventory,equipped,INV_MAX,C,btnS,green,setHeroState,doEquipWeapon,groundItems,setGroundItems,heroPos,onContinue}){
-  const overFull=inventory.length>INV_MAX;
+// ── Item Pickup Panel (shared by combat-victory loot and ground-item pickup) ──
+// mode="victory": items are already in inventory; offers Drop/Eat/Equip, single Continue button.
+// mode="ground":  items are still on the ground; offers Take/Eat, plus Take All / Leave buttons.
+function ItemRow({item,col,extras,actions}){
   return(
-    <div>
-      <div style={{color:"#6fcf97",fontSize:15,fontWeight:"bold",marginBottom:8,textAlign:"center"}}>🏆 Victory!</div>
-      <div style={{background:"#0d2a1a",border:"1px solid #2d8a4e",borderRadius:5,padding:"8px 10px",marginBottom:8,fontSize:11}}>
-        {loot.candles
-          ?<div style={{color:"#f1c40f",marginBottom:3}}>🕯 <strong>+{loot.candles} candles</strong> earned.</div>
-          :<div style={{color:"#6fcf97",marginBottom:3}}>💰 <strong>{loot.gold} gold</strong> found.</div>}
-        {loot.items.map((item,i)=><div key={i} style={{color:"#a8d8b8",marginTop:2}}>📦 {item.name}</div>)}
-        {loot.items.length===0&&<div style={{color:"#7a6a4a"}}>No items found.</div>}
-        {loot.levelUp&&<div style={{color:"#f1c40f",marginTop:6,fontWeight:"bold"}}>
-          ⬆ {loot.levelUpStat==="baseStrength"?"Strength":"Skill"} increased by 1!
-        </div>}
-      </div>
-      {overFull&&(
-        <div style={{background:"#2a0d0d",border:`1px solid ${C.red}`,borderRadius:5,padding:"8px 10px",marginBottom:8}}>
-          <div style={{color:C.red,fontSize:11,marginBottom:5}}>⚠ Inventory over limit ({inventory.length}/{INV_MAX})</div>
-          {inventory.map((item,i)=>{
-            const isOver=i>=INV_MAX;
-            return(
-              <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:4,marginBottom:3,
-                padding:"2px 5px",borderRadius:2,
-                background:isOver?"#3a0808":"#1a1208",
-                border:`1px solid ${isOver?C.red:C.border}`}}>
-                <span style={{fontSize:10,color:isOver?C.red:C.text,flex:1,overflow:"hidden",
-                  whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{item.name}</span>
-                <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
-                  border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2,flexShrink:0}}
-                  onClick={()=>{
-                    if(heroPos&&setGroundItems){
-                      const key=`${heroPos.x},${heroPos.y}`;
-                      setGroundItems(g=>({...g,[key]:[...(g[key]||[]),item]}));
-                    }
-                    setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==i)}));
-                  }}>
-                  Drop
-                </button>
-                {item.type==="food"&&(
-                  <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
-                    border:`1px solid ${green}`,color:green,cursor:"pointer",borderRadius:2,flexShrink:0}}
-                    onClick={()=>setHeroState(h=>({...h,
-                      health:Math.min(100,h.health+(item.heal||0)),
-                      inventory:h.inventory.filter((_,j)=>j!==i)}))}>
-                    Eat
-                  </button>
-                )}
-                {(item.strBonus!=null||item.armourBonus!=null)&&(
-                  <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
-                    border:`1px solid ${green}`,color:green,cursor:"pointer",borderRadius:2,flexShrink:0}}
-                    onClick={()=>{
-                      if(item.strBonus!=null){
-                        const {newEq,toInv}=doEquipWeapon(item,equipped);
-                        setHeroState(h=>({...h,
-                          equipped:{...h.equipped,...newEq},
-                          inventory:[...h.inventory.filter((_,j)=>j!==i),...toInv]}));
-                      } else {
-                        const slot=item.slot==="left_shield"?"left_hand":item.slot;
-                        const old=equipped[slot];
-                        setHeroState(h=>({...h,
-                          equipped:{...h.equipped,[slot]:item},
-                          inventory:[...h.inventory.filter((_,j)=>j!==i),...(old?[old]:[])]}));
-                      }
-                    }}>
-                    Equip
-                  </button>
-                )}
+    <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",marginBottom:5,
+      borderRadius:4,background:"#1f1a11",border:`1px solid ${C.border}`}}>
+      <span style={{fontSize:12,color:col,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{item.name}</span>
+      {extras}
+      {actions}
+    </div>
+  );
+}
+
+function ItemPickupPanel({mode,
+    // victory mode
+    loot,inventory,equipped,doEquipWeapon,
+    // ground mode
+    items,groundKey,
+    // shared
+    INV_MAX,setHeroState,groundItems,setGroundItems,heroPos,onDismiss}){
+  const isVictory=mode==="victory";
+  const heroInv=inventory||[];
+
+  const itemColor=item=>item.type==="magic"?(item.color||"#9b59b6"):
+    item.type==="food"?C.gold:item.strBonus!=null?"#e74c3c":"#7f8c8d";
+
+  const dropToGround=(item)=>{
+    if(heroPos&&setGroundItems){
+      const key=`${heroPos.x},${heroPos.y}`;
+      setGroundItems(g=>({...g,[key]:[...(g[key]||[]),item]}));
+    }
+  };
+
+  // ── Victory mode logic ──────────────────────────────────────────────────────
+  const overFull=isVictory&&heroInv.length>INV_MAX;
+
+  // ── Ground mode logic ────────────────────────────────────────────────────────
+  const gold=!isVictory?(items||[]).filter(i=>i.isGold).reduce((s,i)=>s+(i.amount||0),0):0;
+  const realItems=!isVictory?(items||[]).filter(i=>!i.isGold):[];
+
+  const takeAll=()=>{
+    const room=INV_MAX-heroInv.length;
+    if(room<=0){
+      if(gold>0){
+        setHeroState(h=>({...h,gold:h.gold+gold}));
+        setGroundItems(g=>({...g,[groundKey]:(g[groundKey]||[]).filter(i=>!i.isGold)}));
+      }
+      return;
+    }
+    const toTake=realItems.slice(0,room);
+    const leftover=realItems.slice(room);
+    setHeroState(h=>({...h,gold:h.gold+gold,inventory:[...h.inventory,...toTake]}));
+    setGroundItems(g=>{
+      if(leftover.length===0){const n={...g};delete n[groundKey];return n;}
+      return {...g,[groundKey]:leftover};
+    });
+    if(leftover.length===0)onDismiss();
+  };
+
+  const takeItem=(item)=>{
+    if(heroInv.length>=INV_MAX)return;
+    setHeroState(h=>({...h,inventory:[...h.inventory,item]}));
+    setGroundItems(g=>{
+      const updated=(g[groundKey]||[]).filter(i=>(i.uid||i.id)!==(item.uid||item.id));
+      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
+      return {...g,[groundKey]:updated};
+    });
+  };
+
+  const takeGold=()=>{
+    if(gold<=0)return;
+    setHeroState(h=>({...h,gold:h.gold+gold}));
+    setGroundItems(g=>{
+      const updated=(g[groundKey]||[]).filter(i=>!i.isGold);
+      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
+      return {...g,[groundKey]:updated};
+    });
+  };
+
+  const eatGroundItem=(item,i)=>{
+    setHeroState(h=>({...h,health:Math.min(100,h.health+(item.heal||0))}));
+    setGroundItems(g=>{
+      const updated=(g[groundKey]||[]).filter((_,j)=>j!==i);
+      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
+      return {...g,[groundKey]:updated};
+    });
+  };
+
+  // Auto-close ground dialogue once everything has been taken
+  React.useEffect(()=>{if(!isVictory&&(items||[]).length===0)onDismiss();},[isVictory,items?.length]);
+
+  // ── Shared item-action handlers for victory mode (Drop/Eat/Equip on owned items) ──
+  const dropOwned=(item,i)=>{
+    dropToGround(item);
+    setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==i)}));
+  };
+  const eatOwned=(item,i)=>{
+    setHeroState(h=>({...h,health:Math.min(100,h.health+(item.heal||0)),
+      inventory:h.inventory.filter((_,j)=>j!==i)}));
+  };
+  const equipOwned=(item,i)=>{
+    if(item.strBonus!=null){
+      const {newEq,toInv}=doEquipWeapon(item,equipped);
+      setHeroState(h=>({...h,equipped:{...h.equipped,...newEq},
+        inventory:[...h.inventory.filter((_,j)=>j!==i),...toInv]}));
+    } else {
+      const slot=item.slot==="left_shield"?"left_hand":item.slot;
+      const old=equipped[slot];
+      setHeroState(h=>({...h,equipped:{...h.equipped,[slot]:item},
+        inventory:[...h.inventory.filter((_,j)=>j!==i),...(old?[old]:[])]}));
+    }
+  };
+
+  return(
+    <div style={isVictory?{}:{position:"fixed",inset:0,background:"#000b",display:"flex",
+      alignItems:"center",justifyContent:"center",zIndex:100}}>
+      <div style={isVictory?{}:{background:C.panel,border:`1px solid ${C.border}`,borderRadius:10,
+        overflow:"hidden",maxWidth:400,width:"95%",maxHeight:"80vh",display:"flex",flexDirection:"column"}}>
+
+        {/* Header */}
+        {isVictory
+          ?<div style={{color:"#6fcf97",fontSize:15,fontWeight:"bold",marginBottom:8,textAlign:"center"}}>🏆 Victory!</div>
+          :<div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:"#120f07",flexShrink:0}}>
+              <div style={{color:C.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>Items on the Ground</div>
+              <div style={{color:C.dim,fontSize:10,marginTop:2}}>You find something here...</div>
+            </div>}
+
+        {/* Body */}
+        <div style={isVictory?{}:{flex:1,overflowY:"auto",padding:"10px 14px"}}>
+          {isVictory?(
+            <>
+              <div style={{background:"#0d2a1a",border:"1px solid #2d8a4e",borderRadius:5,padding:"8px 10px",marginBottom:8,fontSize:11}}>
+                {loot.candles
+                  ?<div style={{color:"#f1c40f",marginBottom:3}}>🕯 <strong>+{loot.candles} candles</strong> earned.</div>
+                  :<div style={{color:"#6fcf97",marginBottom:3}}>💰 <strong>{loot.gold} gold</strong> found.</div>}
+                {loot.items.map((item,i)=><div key={i} style={{color:"#a8d8b8",marginTop:2}}>📦 {item.name}</div>)}
+                {loot.items.length===0&&<div style={{color:"#7a6a4a"}}>No items found.</div>}
+                {loot.levelUp&&<div style={{color:"#f1c40f",marginTop:6,fontWeight:"bold"}}>
+                  ⬆ {loot.levelUpStat==="baseStrength"?"Strength":"Skill"} increased by 1!
+                </div>}
               </div>
-            );
-          })}
+              {overFull&&(
+                <div style={{background:"#2a0d0d",border:`1px solid ${C.red}`,borderRadius:5,padding:"8px 10px",marginBottom:8}}>
+                  <div style={{color:C.red,fontSize:11,marginBottom:5}}>⚠ Inventory over limit ({heroInv.length}/{INV_MAX})</div>
+                  {heroInv.map((item,i)=>{
+                    const isOver=i>=INV_MAX;
+                    return(
+                      <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:4,marginBottom:3,
+                        padding:"2px 5px",borderRadius:2,
+                        background:isOver?"#3a0808":"#1a1208",
+                        border:`1px solid ${isOver?C.red:C.border}`}}>
+                        <span style={{fontSize:10,color:isOver?C.red:C.text,flex:1,overflow:"hidden",
+                          whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{item.name}</span>
+                        <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
+                          border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2,flexShrink:0}}
+                          onClick={()=>dropOwned(item,i)}>Drop</button>
+                        {item.type==="food"&&(
+                          <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
+                            border:`1px solid ${C.green}`,color:C.green,cursor:"pointer",borderRadius:2,flexShrink:0}}
+                            onClick={()=>eatOwned(item,i)}>Eat</button>
+                        )}
+                        {(item.strBonus!=null||item.armourBonus!=null)&&(
+                          <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
+                            border:`1px solid ${C.green}`,color:C.green,cursor:"pointer",borderRadius:2,flexShrink:0}}
+                            onClick={()=>equipOwned(item,i)}>Equip</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ):(
+            <>
+              {gold>0&&(
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:6,borderRadius:4,background:"#1f1a08",border:`1px solid ${C.border}`}}>
+                  <span style={{fontSize:18}}>💰</span>
+                  <span style={{fontSize:13,color:C.gold,flex:1}}>{gold} gold</span>
+                  <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C.gold}`,color:C.gold,cursor:"pointer",borderRadius:2}}
+                    onClick={takeGold}>Take</button>
+                </div>
+              )}
+              {realItems.map((item,i)=>(
+                <ItemRow key={item.uid||i} item={item} col={itemColor(item)}
+                  extras={<>
+                    {item.strBonus!=null&&<span style={{fontSize:9,color:C.dim}}>+{item.strBonus}str</span>}
+                    {item.armourBonus!=null&&<span style={{fontSize:9,color:C.dim}}>+{item.armourBonus}arm</span>}
+                    {item.heal!=null&&<span style={{fontSize:9,color:C.dim}}>+{item.heal}hp</span>}
+                  </>}
+                  actions={<>
+                    <button style={{fontSize:8,padding:"2px 7px",background:"transparent",
+                      border:`1px solid ${heroInv.length>=INV_MAX?"#444":C.green}`,
+                      color:heroInv.length>=INV_MAX?"#444":C.green,
+                      cursor:heroInv.length>=INV_MAX?"not-allowed":"pointer",borderRadius:2}}
+                      disabled={heroInv.length>=INV_MAX}
+                      onClick={()=>takeItem(item)}>Take</button>
+                    {item.type==="food"&&<button style={{fontSize:8,padding:"2px 7px",background:"transparent",
+                      border:"1px solid #2d8a4e",color:"#2d8a4e",cursor:"pointer",borderRadius:2}}
+                      onClick={()=>eatGroundItem(item,i)}>Eat</button>}
+                  </>}
+                />
+              ))}
+              {heroInv.length>0&&<>
+                <div style={{color:C.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",margin:"10px 0 5px"}}>Your inventory — drop here</div>
+                {heroInv.map((item,i)=>(
+                  <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",marginBottom:4,borderRadius:4,background:"#151008",border:`1px solid ${C.border}`}}>
+                    <span style={{fontSize:11,color:C.text,flex:1}}>{item.name}</span>
+                    <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2}}
+                      onClick={()=>{dropToGround(item);setHeroState(h=>({...h,inventory:h.inventory.filter(i2=>(i2.uid||i2.id)!==(item.uid||item.id))}));}}>Drop</button>
+                  </div>
+                ))}
+              </>}
+            </>
+          )}
         </div>
-      )}
-      <div style={{display:"flex",justifyContent:"center"}}>
-        <button style={btnS(C.gold,overFull)} disabled={overFull} onClick={onContinue}
-          onMouseEnter={e=>{if(!overFull){e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}}}
-          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=overFull?"#333":C.gold;}}>
-          {overFull?"Drop items to continue →":"Continue"}
-        </button>
+
+        {/* Footer */}
+        {isVictory
+          ?<div style={{display:"flex",justifyContent:"center"}}>
+              <button style={btnS(C.gold,overFull)} disabled={overFull} onClick={onDismiss}
+                onMouseEnter={e=>{if(!overFull){e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}}}
+                onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=overFull?"#333":C.gold;}}>
+                {overFull?"Drop items to continue →":"Continue"}
+              </button>
+            </div>
+          :<div style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`,flexShrink:0,display:"flex",gap:8,justifyContent:"space-between"}}>
+              {(gold>0||realItems.length>0)&&<button style={{...btnS(C.gold,false),padding:"6px 16px"}} onClick={takeAll}
+                onMouseEnter={e=>{e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}}
+                onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.gold;}}>
+                Take All
+              </button>}
+              <button style={{...btnS(C.dim,false),padding:"6px 16px"}} onClick={onDismiss}
+                onMouseEnter={e=>{e.currentTarget.style.background=C.dim;e.currentTarget.style.color=C.bg;}}
+                onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.dim;}}>
+                Leave
+              </button>
+            </div>}
       </div>
     </div>
   );
