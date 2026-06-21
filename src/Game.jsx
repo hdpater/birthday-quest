@@ -790,20 +790,18 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,fixe
               {potions.map(p=><button key={p.id} style={{...btnS(MAGIC_COLOR[p.magicType],false),padding:"3px 9px",fontSize:10}} onClick={()=>usePotion(p)} onMouseEnter={e=>{e.currentTarget.style.background=MAGIC_COLOR[p.magicType];e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=MAGIC_COLOR[p.magicType];}}>🧪 {p.name}</button>)}
             </div>}
           </>}
-          {done==="won"&&loot&&<VictoryPanel
+          {done==="won"&&loot&&<ItemPickupPanel
+              mode="victory"
               loot={loot}
               inventory={heroState.inventory||[]}
               equipped={heroState.equipped||{}}
-              INV_MAX={INV_MAX}
-              C={C}
-              btnS={btnS}
-              green={C.green}
-              setHeroState={setHeroState}
               doEquipWeapon={doEquipWeapon}
+              INV_MAX={INV_MAX}
+              setHeroState={setHeroState}
               groundItems={groundItems}
               setGroundItems={setGroundItems}
               heroPos={heroPos}
-              onContinue={()=>{addLog(loot.candles?`Victory! +${loot.candles} candles${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`:`Victory! +${loot.gold}g${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`);onVictory(mon);}}
+              onDismiss={()=>{addLog(loot.candles?`Victory! +${loot.candles} candles${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`:`Victory! +${loot.gold}g${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`);onVictory(mon);}}
             />}
           {done==="fled"&&<div style={{textAlign:"center"}}><div style={{color:C.dim,fontSize:13,marginBottom:8}}>You flee into the shadows.</div><button style={btnS(C.gold,false)} onClick={onFlee} onMouseEnter={e=>{e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.gold;}}>Continue</button></div>}
           {done==="dead"&&<div style={{textAlign:"center"}}><div style={{color:C.red,fontSize:14,marginBottom:8}}>💀 You have fallen.</div><button style={btnS(C.red,false)} onClick={onDefeat} onMouseEnter={e=>{e.currentTarget.style.background=C.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.red;}}>Game Over</button></div>}
@@ -1637,140 +1635,6 @@ function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAtta
     </div>
   );
 }
-
-// ── Ground Items Dialogue ────────────────────────────────────────────────────
-function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundItems,onDismiss}){
-  const C2=C; // alias
-  const eq=heroState.equipped||{};
-
-  const takeAll=()=>{
-    const gold=items.filter(i=>i.isGold).reduce((s,i)=>s+(i.amount||0),0);
-    const realItems=items.filter(i=>!i.isGold);
-    const room=INV_MAX-(heroState.inventory||[]).length;
-    if(room<=0){
-      // No room for items, but still allow collecting gold
-      if(gold>0){
-        setHeroState(h=>({...h,gold:h.gold+gold}));
-        setGroundItems(g=>({...g,[groundKey]:(g[groundKey]||[]).filter(i=>!i.isGold)}));
-      }
-      return;
-    }
-    const toTake=realItems.slice(0,room);
-    const leftover=realItems.slice(room);
-    setHeroState(h=>({...h,gold:h.gold+gold,inventory:[...h.inventory,...toTake]}));
-    setGroundItems(g=>{
-      if(leftover.length===0){const n={...g};delete n[groundKey];return n;}
-      return {...g,[groundKey]:leftover};
-    });
-    if(leftover.length===0)onDismiss();
-  };
-
-  const takeItem=(item)=>{
-    if((heroState.inventory||[]).length>=INV_MAX)return;
-    setHeroState(h=>({...h,inventory:[...h.inventory,item]}));
-    setGroundItems(g=>{
-      const updated=(g[groundKey]||[]).filter(i=>(i.uid||i.id)!==(item.uid||item.id));
-      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
-      return {...g,[groundKey]:updated};
-    });
-  };
-
-  const takeGold=()=>{
-    if(gold<=0)return;
-    setHeroState(h=>({...h,gold:h.gold+gold}));
-    setGroundItems(g=>{
-      const updated=(g[groundKey]||[]).filter(i=>!i.isGold);
-      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
-      return {...g,[groundKey]:updated};
-    });
-  };
-
-  const dropItem=(item)=>{
-    setGroundItems(g=>({...g,[groundKey]:[...(g[groundKey]||[]),item]}));
-    setHeroState(h=>({...h,inventory:h.inventory.filter(i=>(i.uid||i.id)!==(item.uid||item.id))}));
-  };
-
-  const equipItem=(item,idx)=>{
-    takeItem(item,idx);
-    // equip handled by hero panel after taking
-  };
-
-  const gold=items.filter(i=>i.isGold).reduce((s,i)=>s+(i.amount||0),0);
-  const realItems=items.filter(i=>!i.isGold);
-
-  // Auto-close when everything (items and gold) has been taken
-  React.useEffect(()=>{if(items.length===0)onDismiss();},[items.length]);
-
-  return(
-    <div style={{position:"fixed",inset:0,background:"#000b",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C2.panel,border:`1px solid ${C2.border}`,borderRadius:10,overflow:"hidden",maxWidth:400,width:"95%",maxHeight:"80vh",display:"flex",flexDirection:"column"}}>
-        <div style={{padding:"12px 16px",borderBottom:`1px solid ${C2.border}`,background:"#120f07",flexShrink:0}}>
-          <div style={{color:C2.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>Items on the Ground</div>
-          <div style={{color:C2.dim,fontSize:10,marginTop:2}}>You find something here...</div>
-        </div>
-        <div style={{flex:1,overflowY:"auto",padding:"10px 14px"}}>
-          {gold>0&&(
-            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:6,borderRadius:4,background:"#1f1a08",border:`1px solid ${C2.border}`}}>
-              <span style={{fontSize:18}}>💰</span>
-              <span style={{fontSize:13,color:C2.gold,flex:1}}>{gold} gold</span>
-              <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C2.gold}`,color:C2.gold,cursor:"pointer",borderRadius:2}}
-                onClick={takeGold}>Take</button>
-            </div>
-          )}
-          {realItems.map((item,i)=>{
-            const col=item.type==="magic"?(item.color||"#9b59b6"):
-              item.type==="food"?C2.gold:item.strBonus!=null?"#e74c3c":"#7f8c8d";
-            return(
-              <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",marginBottom:5,borderRadius:4,background:"#1f1a11",border:`1px solid ${C2.border}`}}>
-                <span style={{fontSize:12,color:col,flex:1}}>{item.name}</span>
-                {item.strBonus!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.strBonus}str</span>}
-                {item.armourBonus!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.armourBonus}arm</span>}
-                {item.heal!=null&&<span style={{fontSize:9,color:C2.dim}}>+{item.heal}hp</span>}
-                <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${(heroState.inventory||[]).length>=INV_MAX?"#444":C2.green}`,color:(heroState.inventory||[]).length>=INV_MAX?"#444":C2.green,cursor:(heroState.inventory||[]).length>=INV_MAX?"not-allowed":"pointer",borderRadius:2}}
-                  disabled={(heroState.inventory||[]).length>=INV_MAX}
-                  onClick={()=>takeItem(item)}>Take</button>
-                {item.type==="food"&&<button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid #2d8a4e`,color:"#2d8a4e",cursor:"pointer",borderRadius:2}}
-                  onClick={()=>{
-                    setHeroState(h=>({...h,health:Math.min(100,h.health+(item.heal||0))}));
-                    setGroundItems(g=>{
-                      const updated=(g[groundKey]||[]).filter((_,j)=>j!==i);
-                      if(updated.length===0){const n={...g};delete n[groundKey];return n;}
-                      return {...g,[groundKey]:updated};
-                    });
-                  }}>Eat</button>}
-              </div>
-            );
-          })}
-          {/* Hero inventory for dropping */}
-          {(heroState.inventory||[]).length>0&&<>
-            <div style={{color:C2.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",margin:"10px 0 5px"}}>Your inventory — drop here</div>
-            {(heroState.inventory||[]).map((item,i)=>(
-              <div key={item.uid||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",marginBottom:4,borderRadius:4,background:"#151008",border:`1px solid ${C2.border}`}}>
-                <span style={{fontSize:11,color:C2.text,flex:1}}>{item.name}</span>
-                <button style={{fontSize:8,padding:"2px 7px",background:"transparent",border:`1px solid ${C2.dim}`,color:C2.dim,cursor:"pointer",borderRadius:2}}
-                  onClick={()=>dropItem(item)}>Drop</button>
-              </div>
-            ))}
-          </>}
-        </div>
-        <div style={{padding:"10px 14px",borderTop:`1px solid ${C2.border}`,flexShrink:0,display:"flex",gap:8,justifyContent:"space-between"}}> 
-          {(gold>0||realItems.length>0)&&<button style={{...btnS(C2.gold,false),padding:"6px 16px"}} onClick={takeAll}
-            onMouseEnter={e=>{e.currentTarget.style.background=C2.gold;e.currentTarget.style.color=C2.bg;}}
-            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C2.gold;}}>
-            Take All
-          </button>}
-          <button style={{...btnS(C2.dim,false),padding:"6px 16px"}} onClick={onDismiss}
-            onMouseEnter={e=>{e.currentTarget.style.background=C2.dim;e.currentTarget.style.color=C2.bg;}}
-            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C2.dim;}}>
-            Leave
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
 
 
 const CASTLE_LEVELS = [
@@ -2813,44 +2677,22 @@ export default function Game(){
       {modal?.type==="combat"&&
         <CombatScreen
           monster={modal.data} heroState={heroState} setHeroState={setHeroState}
-          isDragon={modal.data.isDragon}
           addLog={addLog}
           groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos}
-          onVictory={(mon)=>{
-            if(mon.isDragon){
-              setHeroState(h=>({...h,candles:h.candles+10}));
-              addLog("🐉 The Golden Dragon is defeated! +10 candles!");
-              setModal({type:"dragon_victory"});
-            } else {
-              setModal(null);
-            }
-          }}
+          onVictory={()=>{setModal(null);}}
           onDefeat={()=>{setModal(null);setGameState("dead");}}
           onFlee={()=>{setModal(null);addLog("You flee to safety.");}}/>}
-      {modal?.type==="dragon_victory"&&(
-        <div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-          <div style={{background:"#1a0f05",border:"2px solid #ff6b00",borderRadius:12,maxWidth:420,width:"90%",overflow:"hidden",textAlign:"center"}}>
-            <img src={DRAGON_IMG} alt="Dragon" style={{width:"100%",maxHeight:220,objectFit:"cover"}}/>
-            <div style={{padding:"20px 24px"}}>
-              <div style={{color:"#ff6b00",fontSize:18,fontWeight:"bold",marginBottom:12}}>🐉 The Dragon is Slain!</div>
-              <div style={{color:"#e8dcc8",fontSize:13,lineHeight:1.6,marginBottom:20}}>
-                You have defeated the great Golden Dragon and have found <strong style={{color:"#f1c40f"}}>10 candles</strong>!
-              </div>
-              <button style={{padding:"10px 32px",background:"#ff6b00",border:"none",borderRadius:5,color:"#fff",fontSize:14,cursor:"pointer",fontWeight:"bold"}}
-                onClick={()=>setModal(null)}>
-                Claim your glory
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {modal?.type==="ground"&&modal.data&&(
-        <GroundItemsDialogue
+        <ItemPickupPanel
+          mode="ground"
           items={groundItems[modal.data.key]||[]}
           groundKey={modal.data.key}
-          heroState={heroState}
+          inventory={heroState.inventory||[]}
+          INV_MAX={INV_MAX}
           setHeroState={setHeroState}
+          groundItems={groundItems}
           setGroundItems={setGroundItems}
+          heroPos={heroPos}
           onDismiss={()=>setModal(null)}
         />
       )}
