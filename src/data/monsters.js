@@ -5,7 +5,7 @@ export const M_STATS   = [[7, 6, 2], [6, 10, 3], [7, 9, 4], [12, 8, 4], [9, 6, 6
 export const TOURNAMENT_FIGHTERS = [
   {id:"thruk",     name:"Thruk",                col:0, row:0, candles:2,
    strength:80, skill:62, armour:22, health:100, attacks:1, twoHanded:true,
-   dialogue:"THRUK CRUSH YOU LIKE INSECT!",
+   dialogue:"BLUDGEON!!!!! THRUK CRUSH YOU LIKE INSECT!",
    loot:[{name:"Helmet of Thruk",slot:"head",armourBonus:8,type:"armour",
           strBonus:5,uid:"thruk_helm"}]},
   {id:"kenshiro", name:"Kenshiro Thunderborn", col:1, row:0, candles:2,
@@ -19,10 +19,10 @@ export const TOURNAMENT_FIGHTERS = [
   {id:"malgor",   name:"Dreadlord Malgor",     col:0, row:1, candles:3,
    strength:76, skill:76, armour:42, health:100, attacks:1, twoHanded:true,
    dialogue:"You dare enter MY tournament? Kneel before the Dreadlord!",
-   loot:[{name:"Armour of Malgor",slot:"body",armourBonus:12,type:"armour",uid:"malgor_armour"}]},
+   loot:[{name:"Armour of Malgor",slot:"body",armourBonus:18,type:"armour",uid:"malgor_armour"}]},
   {id:"greegan",  name:"Greegan",              col:1, row:1, candles:3,
    strength:40, skill:93, armour:4,  health:100, attacks:14, twoHanded:false,
-   dialogue:"Heh... this'll be quick. For me, at least.",
+   dialogue:"I feel like we have met before. Well, I'll make this quick then.",
    poisonDagger:true,
    loot:[
      {name:"Greegan's Boots",slot:"feet",armourBonus:3,sklBonus:5,type:"armour",uid:"greegan_boots"},

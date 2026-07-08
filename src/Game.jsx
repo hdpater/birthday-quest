@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import CastleLevel from "./Castle.jsx";
 // ── Images ───────────────────────────────────────────────────────────────────
 import { GUARDIAN_IMG } from "./data/images.js";
 import { MONSTER_GRID } from "./data/images.js";
@@ -69,7 +70,7 @@ import { MAGIC_COMPS } from "./data/items.js";
 // ── Helper functions ──────────────────────────────────────────────────────────
 const sellPct  = (item) => item.type==="magic"?0.8:0.5;
 const sellPrice= (item) => Math.ceil(item.cost*sellPct(item));
-const INV_MAX = 5;
+export const INV_MAX = 5;
 const invFull = (heroState) => (heroState.inventory||[]).length >= INV_MAX;
 const clamp    = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
 const rng      = (lo,hi) => Math.floor(Math.random()*(hi-lo+1))+lo;
@@ -79,7 +80,7 @@ const hitChance= (a,d) => a/(a+d);
 
 function randDmg(str,arm) { return Math.max(0, rng(0,str)-rng(0,arm)); }
 
-function weaponAttacks(eq) {
+export function weaponAttacks(eq) {
   const {right_hand:rh, left_hand:lh} = eq;
   if (rh?.twoHanded) return [{label:rh.name, bonus:rh.strBonus, twoHanded:true}];
   const atks = [{label:rh?rh.name:"Fist", bonus:rh?.strBonus||0}];
@@ -87,9 +88,15 @@ function weaponAttacks(eq) {
   return atks;
 }
 
-function totalArmour(eq, base) {
+export function totalArmour(eq, base) {
   return base + Object.values(eq).reduce((s,i)=>s+(i?.armourBonus||0),0);
 }
+
+// strBonus/sklBonus on an armour-slotted item (e.g. Helmet of Thruk, Greegan's
+// Boots) is baked directly into baseStrength/baseSkill on equip/unequip,
+// rather than applied at combat-calc time.
+const armourStrBonus=(item)=>item?.strBonus||0;
+const armourSklBonus=(item)=>item?.sklBonus||0;
 
 function randomMagicItem() {
     const t=MAGIC_TYPES_LIST[rng(0,6)], f=MAGIC_FORMS_LIST[rng(0,2)], id=`magic_${Date.now()}_${Math.random()}`;
@@ -100,14 +107,14 @@ function magicItem(t, f, id) {
     return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]};
 }
 
-function gold(amount) {
+export function gold(amount) {
     return {isGold:true,amount:amount,name:`${amount} gold`};
 }
 
 // Single source of truth for ground-spawned weapons/armour/food:
 // looks up the canonical item definition by id from WEAPONS/ARMOUR_ITEMS/FOOD
 // so ground items can never drift out of sync with shop stats.
-function groundItem(id, uid) {
+export function groundItem(id, uid) {
   const found = [...WEAPONS, ...ARMOUR_ITEMS, ...FOOD].find(i => i.id === id);
   if (!found) { console.error(`groundItem: unknown id "${id}"`); return null; }
   return {...found, uid};
@@ -115,10 +122,20 @@ function groundItem(id, uid) {
 
 const varyPrice=(cost)=>Math.max(1,Math.round(cost*(0.8+Math.random()*0.4)));
 
+// ── Save-game storage (shared by the visible save slots and the hidden one) ──
+const HIDDEN_SAVE_KEY="birthday_quest_hidden_save";
+const storageSet=async(k,v)=>{try{if(window.storage){await window.storage.set(k,v);}else{localStorage.setItem(k,v);}}catch{localStorage.setItem(k,v);}};
+const storageGet=async(k)=>{try{if(window.storage){const r=await window.storage.get(k);return r?r.value:null;}}catch{}return localStorage.getItem(k);};
+const computeChecksum=(data)=>{
+  const str=JSON.stringify(data); let h=0;
+  for(let i=0;i<str.length;i++){h=(Math.imul(31,h)+str.charCodeAt(i))|0;}
+  return(h>>>0).toString(16);
+};
+
 function generateMerchantStock() {
   const pool=[...FOOD,...ARMOUR_ITEMS,...WEAPONS];
   const shuffled=[...pool].sort(()=>Math.random()-0.5);
-  const items=shuffled.slice(0,rng(4,8)).map(i=>({...i,uid:Date.now()+Math.random(),price:varyPrice(i.cost)}));
+  const items=shuffled.slice(0,rng(4,8)).map(i=>({...i,uid:Date.now()+Math.random(),price:varyPrice(i.cost??i.price)}));
     if(Math.random()<0.5){
 	const magic=randomMagicItem();
 	items.push({...magic,uid:Date.now()+Math.random(),price:varyPrice(magic.cost)});
@@ -127,7 +144,7 @@ function generateMerchantStock() {
 }
 
 // Equip weapon with correct hand logic
-function doEquipWeapon(item, eq) {
+export function doEquipWeapon(item, eq) {
   // If a two-handed weapon is currently equipped, clear both hands first
   // and return the greatsword to inventory as a single item (not twice)
   let baseEq = {...eq};
@@ -184,7 +201,7 @@ function doEquipWeapon(item, eq) {
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 const C={bg:"#0d1117",panel:"#1a1510",border:"#3d2f18",gold:"#c9a84c",text:"#e8dcc8",dim:"#7a6a4a",red:"#c0392b",green:"#2d8a4e",blue:"#2e6da4"};
-const btnS=(col,dis)=>({padding:"6px 14px",background:"transparent",border:`1.5px solid ${dis?"#333":col}`,color:dis?"#444":col,fontFamily:"'Palatino Linotype',Palatino,serif",fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",cursor:dis?"not-allowed":"pointer",borderRadius:3,transition:"background 0.15s"});
+export const btnS=(col,dis)=>({padding:"6px 14px",background:"transparent",border:`1.5px solid ${dis?"#333":col}`,color:dis?"#444":col,fontFamily:"'Palatino Linotype',Palatino,serif",fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",cursor:dis?"not-allowed":"pointer",borderRadius:3,transition:"background 0.15s"});
 
 function HpBar({pct,color}){
   const c=color||(pct>60?"#2d8a4e":pct>25?"#c9a02b":"#c0392b");
@@ -237,6 +254,15 @@ function MonsterPortrait({col,row,size=160}){
   const srcX=BORDER+col*(MCELL+BORDER),srcY=BORDER+row*(MCELL+BORDER);
   return <div style={{width:size,height:size,overflow:"hidden",borderRadius:6,border:"2px solid #3d2f18",flexShrink:0,position:"relative"}}>
     <div style={{position:"absolute",width:NATURAL*scale,height:NATURAL*scale,backgroundImage:`url(${MONSTER_GRID})`,backgroundSize:"100% 100%",left:-srcX*scale,top:-srcY*scale}}/>
+  </div>;
+}
+
+function CourtierPortrait({col,row,size=160}){
+  // undeadCourt.png is a plain 4x4 grid (16 portraits), no gutter between cells.
+  const MCELL=273,NATURAL=1092,scale=size/MCELL;
+  const srcX=col*MCELL,srcY=row*MCELL;
+  return <div style={{width:size,height:size,overflow:"hidden",borderRadius:6,border:"2px solid #3d2f18",flexShrink:0,position:"relative"}}>
+    <div style={{position:"absolute",width:NATURAL*scale,height:NATURAL*scale,backgroundImage:`url(${COURTIER_IMG})`,backgroundSize:"100% 100%",left:-srcX*scale,top:-srcY*scale}}/>
   </div>;
 }
 
@@ -459,14 +485,16 @@ function ItemPickupPanel({mode,
       inventory:h.inventory.filter((_,j)=>j!==i)}));
   };
   const equipOwned=(item,i)=>{
-    if(item.strBonus!=null){
+    if(item.armourBonus==null&&item.strBonus!=null){
       const {newEq,toInv}=doEquipWeapon(item,equipped);
       setHeroState(h=>({...h,equipped:{...h.equipped,...newEq},
         inventory:[...h.inventory.filter((_,j)=>j!==i),...toInv]}));
     } else {
       const slot=item.slot==="left_shield"?"left_hand":item.slot;
       const old=equipped[slot];
-      setHeroState(h=>({...h,equipped:{...h.equipped,[slot]:item},
+      const strDelta=armourStrBonus(item)-armourStrBonus(old);
+      const sklDelta=armourSklBonus(item)-armourSklBonus(old);
+      setHeroState(h=>({...h,baseStrength:h.baseStrength+strDelta,baseSkill:h.baseSkill+sklDelta,equipped:{...h.equipped,[slot]:item},
         inventory:[...h.inventory.filter((_,j)=>j!==i),...(old?[old]:[])]}));
     }
   };
@@ -601,7 +629,7 @@ function ItemPickupPanel({mode,
 }
 
 // ── Combat Screen ─────────────────────────────────────────────────────────────
-function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,fixedLoot,fixedCandles,onVictory,onDefeat,onFlee,addLog,groundItems,setGroundItems,heroPos}){
+export function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,isCastle,fixedLoot,fixedCandles,onVictory,onDefeat,onFlee,addLog,groundItems,setGroundItems,heroPos}){
   const [mon,setMon]=useState({...monster,health:monster.maxHealth||100});
   const [potionReverts,setPotionReverts]=useState({});
   const [combatLog,setCombatLog]=useState(monster.dialogue
@@ -633,8 +661,8 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,fixe
       const orig=sliderReverts||{baseStrength:h.baseStrength,baseSkill:h.baseSkill};
       if(!sliderReverts) setSliderReverts(orig);
       return{...h,
-        baseStrength:orig.baseStrength+v,
-        baseSkill:orig.baseSkill-v,
+        baseStrength:orig.baseStrength-v,
+        baseSkill:orig.baseSkill+v,
       };
     });
   };
@@ -811,6 +839,8 @@ function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,fixe
             ? <div style={{width:120,height:120,flexShrink:0,borderRadius:4,overflow:"hidden",
                 backgroundImage:`url(${TOURNAMENT_IMG})`,backgroundSize:"200% 200%",
                 backgroundPosition:`${mon.col*100}% ${mon.row*100}%`}}/>
+            : isCastle
+            ? <CourtierPortrait col={mon.col} row={mon.row} size={120}/>
             : <MonsterPortrait col={mon.col} row={mon.row} size={120}/>
           }
           <div style={{padding:"10px 14px",flex:1}}>
@@ -895,7 +925,7 @@ function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,addLog,
     setHeroState(h=>{
       const orig=sliderReverts||{baseStrength:h.baseStrength,baseSkill:h.baseSkill};
       if(!sliderReverts) setSliderReverts(orig);
-      return{...h,baseStrength:orig.baseStrength+v,baseSkill:orig.baseSkill-v};
+      return{...h,baseStrength:orig.baseStrength-v,baseSkill:orig.baseSkill+v};
     });
   };
 
@@ -1127,32 +1157,38 @@ function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,addLog,
 }
 
 // ── Shop dialogues ────────────────────────────────────────────────────────────
-function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,defeatedTournament,setDefeatedTournament,hasMap,setHasMap,groundItems,setGroundItems,onDismiss}){
+function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,defeatedTournament,setDefeatedTournament,hasMap,setHasMap,groundItems,setGroundItems,heroPos,teleportHero,onDismiss}){
   const [tab,setTab]=useState("buy");
   const [saveMsg,setSaveMsg]=React.useState("");
-  const SAVE_KEY="birthday_quest_save";
-  const storageSet=async(k,v)=>{try{if(window.storage){await window.storage.set(k,v);}else{localStorage.setItem(k,v);}}catch{localStorage.setItem(k,v);}};
-  const storageGet=async(k)=>{try{if(window.storage){const r=await window.storage.get(k);return r?r.value:null;}}catch{}return localStorage.getItem(k);};
-  const computeChecksum=(data)=>{
-    const str=JSON.stringify(data); let h=0;
-    for(let i=0;i<str.length;i++){h=(Math.imul(31,h)+str.charCodeAt(i))|0;}
-    return(h>>>0).toString(16);
+  const [saves,setSaves]=useState([]);
+  const SAVES_KEY="birthday_quest_saves";
+  const MAX_SAVES=3;
+  const readSaves=async()=>{
+    try{
+      const raw=await storageGet(SAVES_KEY);
+      const list=raw?JSON.parse(raw):[];
+      return Array.isArray(list)?list:[];
+    }catch{return [];}
   };
+  React.useEffect(()=>{readSaves().then(setSaves);},[]);
   const saveGame=async()=>{
     try{
-      const saveData={heroState,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},hasMap,timestamp:Date.now()};
+      const saveData={heroState,heroPos,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},hasMap,timestamp:Date.now()};
       const cs=computeChecksum(saveData);
-      await storageSet(SAVE_KEY,JSON.stringify({...saveData,checksum:cs}));
+      let list=await readSaves();
+      list=[...list,{...saveData,checksum:cs}].sort((a,b)=>a.timestamp-b.timestamp);
+      if(list.length>MAX_SAVES) list=list.slice(list.length-MAX_SAVES); // oldest evicted first
+      await storageSet(SAVES_KEY,JSON.stringify(list));
+      setSaves(list);
       setSaveMsg("✓ Game saved!");setTimeout(()=>setSaveMsg(""),2500);
     }catch(e){console.error("Save error:",e);setSaveMsg("✗ Save failed: "+String(e.message||e));}
   };
-  const loadGame=async()=>{
+  const loadGame=(entry)=>{
     try{
-      const raw=await storageGet(SAVE_KEY);
-      if(!raw){setSaveMsg("No save found.");return;}
-      const{checksum:cs,...saveData}=JSON.parse(raw);
+      const{checksum:cs,...saveData}=entry;
       if(cs!==computeChecksum(saveData)){setSaveMsg("✗ Save corrupted!");return;}
       setHeroState(saveData.heroState);
+      if(saveData.heroPos&&teleportHero) teleportHero(saveData.heroPos.x,saveData.heroPos.y);
       if(saveData.hasMap!=null)setHasMap(saveData.hasMap);
       if(saveData.groundItems&&setGroundItems) setGroundItems(saveData.groundItems);
       if(saveData.defeatedTournament&&setDefeatedTournament){
@@ -1166,7 +1202,6 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
       setSaveMsg("✓ Game loaded!");setTimeout(()=>setSaveMsg(""),2500);
     }catch(e){console.error("Load error:",e);setSaveMsg("✗ Load failed: "+String(e.message||e));}
   };
-  const hasSave=()=>{try{return!!localStorage.getItem(SAVE_KEY);}catch{return false;}};
   const inv=heroState.inventory||[];
   const eat=(food)=>{
     const idx=inv.findIndex(i=>i.id===food.id&&i.type==="food");
@@ -1221,24 +1256,29 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
           </div>}
           {tab==="save"&&<div style={{padding:"8px 0"}}>
             <div style={{fontSize:11,color:C.dim,marginBottom:14,fontStyle:"italic",textAlign:"center"}}>"Rest here, traveller. Your tale shall be remembered."</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <button style={{...btnS(C.gold,false),padding:"10px"}} onClick={saveGame}
-                onMouseEnter={e=>{e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}}
-                onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.gold;}}>
-                💾 Save Game
-              </button>
-              <button style={{...btnS(C.blue,false),padding:"10px"}} onClick={loadGame}
-                onMouseEnter={e=>{e.currentTarget.style.background=C.blue;e.currentTarget.style.color="#fff";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.blue;}}>
-                📂 Load Game
-              </button>
-            </div>
+            <button style={{...btnS(C.gold,false),padding:"10px",width:"100%"}} onClick={saveGame}
+              onMouseEnter={e=>{e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}}
+              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.gold;}}>
+              💾 Save Game
+            </button>
             {saveMsg&&<div style={{marginTop:12,textAlign:"center",fontSize:12,
               color:saveMsg.startsWith("✓")?"#6fcf97":saveMsg.startsWith("✗")?C.red:C.dim,
               padding:"6px",background:"#0d0a06",borderRadius:4,border:`1px solid ${C.border}`}}>
               {saveMsg}
             </div>}
-            {!hasSave()&&!saveMsg&&<div style={{marginTop:10,fontSize:10,color:C.dim,textAlign:"center"}}>No saved game found.</div>}
+            <div style={{marginTop:16,color:C.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>
+              Load Game ({saves.length}/{MAX_SAVES})
+            </div>
+            {saves.length===0
+              ? <div style={{fontSize:10,color:C.dim,fontStyle:"italic",textAlign:"center",padding:"8px 0"}}>No saved games found.</div>
+              : [...saves].sort((a,b)=>b.timestamp-a.timestamp).map(entry=>(
+                  <button key={entry.timestamp} style={{...btnS(C.blue,false),padding:"8px 10px",width:"100%",textAlign:"left",marginBottom:6}}
+                    onClick={()=>loadGame(entry)}
+                    onMouseEnter={e=>{e.currentTarget.style.background=C.blue;e.currentTarget.style.color="#fff";}}
+                    onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.blue;}}>
+                    📂 {new Date(entry.timestamp).toLocaleString()}
+                  </button>
+                ))}
           </div>}
         </div>
       </div>
@@ -1272,7 +1312,9 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
       const slot=item.slot==="left_shield"?"left_hand":item.slot;
       if(slot==="left_hand"&&eq.right_hand?.twoHanded){notify("Remove Great Sword first.");return;}
       const old=eq[slot];
-      setHeroState(h=>({...h,equipped:{...h.equipped,[slot]:item},inventory:[...h.inventory.filter(i=>i.uid!==item.uid),...(old?[old]:[])]}));
+      const strDelta=armourStrBonus(item)-armourStrBonus(old);
+      const sklDelta=armourSklBonus(item)-armourSklBonus(old);
+      setHeroState(h=>({...h,baseStrength:h.baseStrength+strDelta,baseSkill:h.baseSkill+sklDelta,equipped:{...h.equipped,[slot]:item},inventory:[...h.inventory.filter(i=>i.uid!==item.uid),...(old?[old]:[])]}));
     }
   };
   const unequip=(slot)=>{
@@ -1283,7 +1325,7 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
       const lh=eq.left_hand;
       setHeroState(h=>({...h,equipped:{...h.equipped,right_hand:lh||null,left_hand:null},inventory:[...h.inventory,item]}));
     } else {
-      setHeroState(h=>({...h,equipped:{...h.equipped,[slot]:null},inventory:[...h.inventory,item]}));
+      setHeroState(h=>({...h,baseStrength:h.baseStrength-armourStrBonus(item),baseSkill:h.baseSkill-armourSklBonus(item),equipped:{...h.equipped,[slot]:null},inventory:[...h.inventory,item]}));
     }
   };
   const SLOT_LABELS={head:"Head",body:"Body",right_hand:"Right Hand",left_hand:"Left Hand",feet:"Feet"};
@@ -1582,13 +1624,15 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,set
                   {(item.strBonus!=null||item.armourBonus!=null)&&<button style={{fontSize:8,padding:"1px 6px",background:"transparent",border:`1px solid ${C.green}`,color:C.green,cursor:"pointer",borderRadius:2}}
                     onClick={()=>{
                       const eq=heroState.equipped||{};
-                      if(item.strBonus!=null){
+                      if(item.armourBonus==null&&item.strBonus!=null){
                         const{newEq,toInv}=doEquipWeapon(item,eq);
                         setHeroState(h=>({...h,equipped:{...h.equipped,...newEq},inventory:[...h.inventory.filter((_,j)=>j!==realIdx),...toInv]}));
                       } else {
                         const slot=item.slot==="left_shield"?"left_hand":item.slot;
                         const old=eq[slot];
-                        setHeroState(h=>({...h,equipped:{...h.equipped,[slot]:item},inventory:[...h.inventory.filter((_,j)=>j!==realIdx),...(old?[old]:[])]}));
+                        const strDelta=armourStrBonus(item)-armourStrBonus(old);
+                        const sklDelta=armourSklBonus(item)-armourSklBonus(old);
+                        setHeroState(h=>({...h,baseStrength:h.baseStrength+strDelta,baseSkill:h.baseSkill+sklDelta,equipped:{...h.equipped,[slot]:item},inventory:[...h.inventory.filter((_,j)=>j!==realIdx),...(old?[old]:[])]}));
                       }
                     }}>Equip</button>}
                   {item.type==="magic"&&item.form==="ring"&&<button style={{fontSize:8,padding:"1px 6px",background:"transparent",border:`1px solid #9b59b6`,color:"#9b59b6",cursor:"pointer",borderRadius:2}}
@@ -1638,7 +1682,6 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
 
   const goldPrize  = (mon)=>Math.round(5+mon.level*2+rng(0,mon.level));
   const goldPenalty= (mon)=>Math.round(3+mon.level+rng(0,5));
-  const allRetired = slots.every(s=>s.challenger===null);
 
   const fightRound=(heroHp,monHp,mon,eq,armour)=>{
     const lines=[]; const ring=eq.finger;
@@ -1692,14 +1735,12 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
       allLines.push(`🏆 Victory! +${prize} gold.`);
       addLog(`Arena: defeated ${mon.name} for ${prize}g!`);
 
-      // Replace defeated challenger with a harder one, or retire slot if level >30
+      // Replace defeated challenger with a harder one, capped at level 30
+      // (never leaves the slot empty — it just stops escalating).
       setSlots(prev=>prev.map((s,i)=>{
         if(i!==slotIdx) return s;
-        const newCeiling=s.nextCeiling+3;
-        // If new ceiling >30, slot retires (null)
-        if(s.nextCeiling>30) return {...s,challenger:null};
-        const next=makeChallenger(s.nextCeiling);
-        return {challenger:next, nextCeiling:newCeiling};
+        const newCeiling=Math.min(s.nextCeiling+3,30);
+        return {challenger:makeChallenger(newCeiling), nextCeiling:newCeiling};
       }));
       setResult({outcome:"won",prize});
     } else {
@@ -1732,19 +1773,11 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
         {/* Choose phase */}
         {phase==="choose"&&<>
           <div style={{padding:"8px 14px",color:C.dim,fontSize:11,borderBottom:"1px solid #3d1818",flexShrink:0}}>
-            {allRetired
-              ? "All challengers have been retired. The arena is closed."
-              : "Defeat challengers to earn gold. Each victory brings a harder replacement."}
+            Defeat challengers to earn gold. Each victory brings a harder replacement.
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
             {slots.map((slot,i)=>{
               const mon=slot.challenger;
-              if(!mon) return(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 11px",marginBottom:6,borderRadius:5,background:"#130808",border:"1px solid #2a1010",opacity:0.4}}>
-                  <div style={{width:52,height:52,borderRadius:6,background:"#0d0505",border:"1px solid #2a1010",display:"flex",alignItems:"center",justifyContent:"center",color:"#3a1818",fontSize:20}}>✗</div>
-                  <div style={{color:"#5a2020",fontSize:12,fontStyle:"italic"}}>Challenger retired</div>
-                </div>
-              );
               const diff=mon.level-heroLevel;
               const diffColor=diff>2?"#e74c3c":diff>0?"#c9a02b":diff<-2?"#2d8a4e":"#7a6a4a";
               const prize=goldPrize(mon); const penalty=goldPenalty(mon);
@@ -1762,7 +1795,7 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontSize:11,color:C.green}}>+{prize}g win</div>
                     <div style={{fontSize:10,color:"#e07070"}}>−{penalty}g lose</div>
-                    {slot.nextCeiling>30&&<div style={{fontSize:9,color:"#7a3030"}}>Last challenger</div>}
+                    {slot.nextCeiling>=30&&<div style={{fontSize:9,color:"#7a3030"}}>Max difficulty</div>}
                   </div>
                 </div>
               );
@@ -1779,7 +1812,7 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
             {combatLog.map((l,i)=><div key={i} style={{fontSize:11,color:l.startsWith("──")?"#7a6234":i===0?C.text:C.dim,marginBottom:2}}>{l}</div>)}
           </div>
           <div style={{padding:"10px 14px",borderTop:"1px solid #3d1818",flexShrink:0,display:"flex",gap:8,justifyContent:"center"}}>
-            {!allRetired&&<button style={btnS(C.red,false)} onClick={()=>{setPhase("choose");setResult(null);setFightSlot(null);setCombatLog([]);}} onMouseEnter={e=>{e.currentTarget.style.background=C.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.red;}}>Fight Again</button>}
+            <button style={btnS(C.red,false)} onClick={()=>{setPhase("choose");setResult(null);setFightSlot(null);setCombatLog([]);}} onMouseEnter={e=>{e.currentTarget.style.background=C.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.red;}}>Fight Again</button>
             <button style={btnS(C.dim,false)} onClick={onDismiss} onMouseEnter={e=>{e.currentTarget.style.background=C.dim;e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.dim;}}>Leave</button>
           </div>
         </>}
@@ -1831,18 +1864,20 @@ const CELL_PX=16;
 const CANVAS=VIEW*CELL_PX; // 976px viewport
 
 
-function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAttacks,doEquipWeapon,heroPos,setGroundItems}){
+export function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAttacks,doEquipWeapon,heroPos,setGroundItems,posScale=1}){
   const eq=heroState.equipped||{};
   const inv=heroState.inventory||[];
   const overFull=inv.length>INV_MAX;
   const armour=totalArmour(eq,heroState.baseArmour||0);
   const atks=weaponAttacks(eq);
   const SLOT_LABELS={head:"Head",body:"Body",right_hand:"Right",left_hand:"Left",finger:"Ring",feet:"Feet"};
+  // No-op (rather than silently deleting the item) if there's nowhere to drop
+  // it — e.g. the castle has no ground-items system of its own.
+  const canDrop=!!(heroPos&&setGroundItems);
   const dropToGround=(item,idx)=>{
-    if(heroPos&&setGroundItems){
-      const key=`${heroPos.x},${heroPos.y}`;
-      setGroundItems(g=>({...g,[key]:[...(g[key]||[]),item]}));
-    }
+    if(!canDrop)return;
+    const key=`${heroPos.x},${heroPos.y}`;
+    setGroundItems(g=>({...g,[key]:[...(g[key]||[]),item]}));
     setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==idx)}));
   };
   return(
@@ -1857,7 +1892,8 @@ function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAtta
             background:heroState.health>60?"#2d8a4e":heroState.health>25?"#c9a02b":"#c0392b",borderRadius:3}}/>
         </div>
         {[["❤",`${heroState.health}%`],["💰",`${heroState.gold}g`],["🕯",`${heroState.candles}/50`],
-          ["⚔ Str",heroState.baseStrength],["🎯 Skl",heroState.baseSkill],["🛡 Arm",armour]
+          ["⚔ Str",heroState.baseStrength],["🎯 Skl",heroState.baseSkill],["🛡 Arm",armour],
+          ...(heroPos?[["📍",`${Math.floor(heroPos.x/posScale)},${Math.floor(heroPos.y/posScale)}`]]:[])
         ].map(([l,v])=>(
           <div key={l} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
             <span style={{color:C.dim}}>{l}</span><span style={{color:C.text}}>{v}</span>
@@ -1903,11 +1939,11 @@ function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAtta
               <div style={{fontSize:10,color:isOver?C.red:col,marginBottom:2,
                 overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{item.name}</div>
               <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
+                {canDrop&&<button style={{fontSize:8,padding:"1px 5px",background:"transparent",
                   border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2}}
                   onClick={()=>dropToGround(item,i)}>
                   Drop
-                </button>
+                </button>}
                 {item.type==="food"&&(
                   <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
                     border:"1px solid #2d8a4e",color:"#2d8a4e",cursor:"pointer",borderRadius:2}}
@@ -1921,14 +1957,16 @@ function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAtta
                   <button style={{fontSize:8,padding:"1px 5px",background:"transparent",
                     border:"1px solid #2d8a4e",color:"#2d8a4e",cursor:"pointer",borderRadius:2}}
                     onClick={()=>{
-                      if(item.strBonus!=null){
+                      if(item.armourBonus==null&&item.strBonus!=null){
                         const{newEq,toInv}=doEquipWeapon(item,eq);
                         setHeroState(h=>({...h,equipped:{...h.equipped,...newEq},
                           inventory:[...h.inventory.filter((_,j)=>j!==i),...toInv]}));
                       } else {
                         const slot=item.slot==="left_shield"?"left_hand":item.slot;
                         const old=eq[slot];
-                        setHeroState(h=>({...h,equipped:{...h.equipped,[slot]:item},
+                        const strDelta=armourStrBonus(item)-armourStrBonus(old);
+                        const sklDelta=armourSklBonus(item)-armourSklBonus(old);
+                        setHeroState(h=>({...h,baseStrength:h.baseStrength+strDelta,baseSkill:h.baseSkill+sklDelta,equipped:{...h.equipped,[slot]:item},
                           inventory:[...h.inventory.filter((_,j)=>j!==i),...(old?[old]:[])]}));
                       }
                     }}>
@@ -1956,7 +1994,7 @@ function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAtta
 }
 
 // ── Ground Items Dialogue ────────────────────────────────────────────────────
-function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundItems,onDismiss}){
+export function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundItems,onDismiss}){
   const C2=C; // alias
   const eq=heroState.equipped||{};
 
@@ -2087,524 +2125,6 @@ function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundIt
   );
 }
 
-
-
-
-const CASTLE_LEVELS = [
-  {
-    map: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111110000111111111111111111100000011111110000111111110000111100001111000011111000011111111110000001111111000011111111111011110000111101111111100001111111111000000111111100001111111100101111000011110100111110000111111111100001111111110000111111110010111100001111010011111000011111111110000001111111000011111111001011110000111101001111100001111111111000000111111100001111111100101111000011110100111110000111111111100000011111110000111111110010111100001111010011111000011111111110000000000000000000000000001000000000000001000000000001000000000000000000000000000000000000111111111111111100000000111100000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000111111111111000011111111111100001111111111111111111111111100000011110000111100001111000011110000111111111111010011111111110000001111000011110000111100001111000011111111111101001111111111000000111100001111000011110000111100001111111111110100111111111100000011110000111100001111000011110000111111111111010011111111110000001000000010000000111100001111000011111111111101001111111111000000111111111000000011110000111100001111111111110100111111111100000000000000111111111111000011110000111111111111010011111111110000000000000010010100111100001111000011111111111101001111111111000000111111111111010010100000100000000000000000000100001000000000000011111111111101001010000010000000000000111111110000100000000000001111111111110100101111001000000000000010000000000010000000000000111111111111010010000100100000000000001000000000001000000000000011111111111101001111010011110000111111111111111111111111110000001111111111110100111101001111000011111111000011110100111111000000111111111111010011110100111100001111111100001111010011111100000011111111111101001111010011110000111111110000111101001111110000001111111111110100111101001000000000000001000000000100000000000000000000000000010000000100100000000000000100000000010000000000000000000000001111000011110010000000000000011100001111000000000000000000000000100000001000001000000000000000010000100000000000000000000000000010000000100000111100001111111111110010111111111100000011111111111111111111000011110000111100001111001011111111110000001111111110100111111100001111011111110000111100101111111111000000111111111010011111110000111101001111110011110010111111111100000011111111101001111111000011110100101001001111001011111111110000001111111110100111111100001111010010100100111100101111111111000000111111111010011111110000111101001011110011110010111111111100000011111111101001111111000011110100100001001111001010000000000000001111111110100111111100001111010011110100111100111000000000000000111111111010011111110000111101001111010011110000111000000000000000000000001000000000000000000100111101001111000010100000000000000000000000100000111111111111110011110100111100001111111111000000111111111111111110000000000000000000010000000111111111111100000010001001000000001000000000000000001111111111110011111111110000001111100101111111111111111111000000100000000000001111111111000000111110010111111001011111111100000010000000000000111111111100000011111111011111100111111111110000111111111111000011111111110000001111100001111110000111111111000011111111111100001111111111000000111110000111111000011111111100001111111111110000111111111100000011111000011111100001111111110000111111111111000011111111110000001111100001111110000111111111000011111111111100001111111111000000111110000111111000011111111100001111111111110000111111111100000011111000011111100001111111110000111111111111000011111111110000001111100001111110000111111111000011111111111100001111111111000000111110000111111000011111111100001111111111110000111111111100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    start: [0, 6],
-    stairs: [29, 44],
-    doors: [{"cells": [[1, 6]], "id": "door_0", "locked": null}, {"cells": [[2, 19]], "id": "door_1", "locked": null}, {"cells": [[2, 48]], "id": "door_2", "locked": null}, {"cells": [[6, 14]], "id": "door_3", "locked": null}, {"cells": [[6, 48]], "id": "door_4", "locked": null}, {"cells": [[7, 51]], "id": "door_5", "locked": null}, {"cells": [[9, 2]], "id": "door_6", "locked": null}, {"cells": [[9, 14]], "id": "door_7", "locked": null}, {"cells": [[10, 19]], "id": "door_8", "locked": null}, {"cells": [[10, 22]], "id": "door_9", "locked": null}, {"cells": [[11, 36]], "id": "door_10", "locked": "yellow"}, {"cells": [[12, 2]], "id": "door_11", "locked": null}, {"cells": [[13, 22]], "id": "door_12", "locked": null}, {"cells": [[14, 36]], "id": "door_13", "locked": null}, {"cells": [[17, 21]], "id": "door_14", "locked": null}, {"cells": [[17, 49]], "id": "door_15", "locked": "red"}, {"cells": [[18, 23]], "id": "door_16", "locked": null}, {"cells": [[18, 26]], "id": "door_17", "locked": null}, {"cells": [[20, 23]], "id": "door_18", "locked": null}, {"cells": [[20, 35]], "id": "door_19", "locked": null}, {"cells": [[20, 49]], "id": "door_20", "locked": null}, {"cells": [[20, 51]], "id": "door_21", "locked": null}, {"cells": [[21, 2]], "id": "door_22", "locked": null}, {"cells": [[21, 4]], "id": "door_23", "locked": null}, {"cells": [[22, 14]], "id": "door_24", "locked": "orange"}, {"cells": [[24, 2]], "id": "door_25", "locked": "purple"}, {"cells": [[25, 14]], "id": "door_26", "locked": null}, {"cells": [[26, 23]], "id": "door_27", "locked": null}, {"cells": [[26, 26]], "id": "door_28", "locked": "green"}, {"cells": [[26, 31]], "id": "door_29", "locked": null}, {"cells": [[26, 34]], "id": "door_30", "locked": null}, {"cells": [[29, 2]], "id": "door_31", "locked": null}, {"cells": [[32, 2]], "id": "door_32", "locked": null}, {"cells": [[33, 37]], "id": "door_33", "locked": null}, {"cells": [[34, 39]], "id": "door_34", "locked": null}, {"cells": [[34, 42]], "id": "door_35", "locked": null}, {"cells": [[36, 39]], "id": "door_36", "locked": null}, {"cells": [[36, 50]], "id": "door_37", "locked": null}, {"cells": [[38, 35]], "id": "door_38", "locked": null}, {"cells": [[38, 38]], "id": "door_39", "locked": null}, {"cells": [[40, 4]], "id": "door_40", "locked": null}, {"cells": [[40, 26]], "id": "door_41", "locked": null}, {"cells": [[41, 31]], "id": "door_42", "locked": null}, {"cells": [[41, 35]], "id": "door_43", "locked": null}, {"cells": [[42, 27]], "id": "door_44", "locked": null}, {"cells": [[43, 34]], "id": "door_45", "locked": null}, {"cells": [[45, 27]], "id": "door_46", "locked": null}, {"cells": [[46, 2]], "id": "door_47", "locked": null}, {"cells": [[46, 14]], "id": "door_48", "locked": null}, {"cells": [[49, 2]], "id": "door_49", "locked": "blue"}, {"cells": [[49, 14]], "id": "door_50", "locked": null}, {"cells": [[49, 47]], "id": "door_51", "locked": null}, {"cells": [[50, 10]], "id": "door_52", "locked": null}, {"cells": [[50, 27]], "id": "door_53", "locked": null}, {"cells": [[50, 42]], "id": "door_54", "locked": null}, {"cells": [[50, 45]], "id": "door_55", "locked": null}, {"cells": [[52, 23]], "id": "door_56", "locked": null}, {"cells": [[52, 45]], "id": "door_57", "locked": null}, {"cells": [[53, 27]], "id": "door_58", "locked": null}],
-    keys:  [{"x": 20, "y": 8, "keyType": "purple"}, {"x": 2, "y": 4, "keyType": "blue"}, {"x": 36, "y": 20, "keyType": "yellow"}, {"x": 41, "y": 20, "keyType": "orange"}, {"x": 21, "y": 42, "keyType": "red"}, {"x": 45, "y": 52, "keyType": "green"}],
-    rooms: [{"id": "room_0", "rx": 2, "ry": 2, "rw": 7, "rh": 8, "depth": 5}, {"id": "room_1", "rx": 13, "ry": 2, "rw": 8, "rh": 8, "depth": 25}, {"id": "room_2", "rx": 25, "ry": 2, "rw": 4, "rh": 8, "depth": 35}, {"id": "room_3", "rx": 33, "ry": 2, "rw": 4, "rh": 8, "depth": 43}, {"id": "room_4", "rx": 41, "ry": 2, "rw": 5, "rh": 8, "depth": 65}, {"id": "room_5", "rx": 50, "ry": 2, "rw": 10, "rh": 8, "depth": 81}, {"id": "room_19", "rx": 34, "ry": 14, "rw": 12, "rh": 9, "depth": 98}, {"id": "room_20", "rx": 50, "ry": 14, "rw": 10, "rh": 9, "depth": 99}, {"id": "room_21", "rx": 34, "ry": 27, "rw": 8, "rh": 4, "depth": 111}, {"id": "room_22", "rx": 46, "ry": 27, "rw": 4, "rh": 4, "depth": 111}, {"id": "room_23", "rx": 54, "ry": 27, "rw": 6, "rh": 4, "depth": 112}, {"id": "room_26", "rx": 42, "ry": 35, "rw": 4, "rh": 12, "depth": 125}, {"id": "room_24", "rx": 34, "ry": 35, "rw": 4, "rh": 4, "depth": 127}, {"id": "room_28", "rx": 50, "ry": 35, "rw": 10, "rh": 7, "depth": 137}, {"id": "room_25", "rx": 34, "ry": 43, "rw": 4, "rh": 4, "depth": 139}, {"id": "room_29", "rx": 50, "ry": 46, "rw": 10, "rh": 14, "depth": 142}, {"id": "room_27", "rx": 34, "ry": 51, "rw": 12, "rh": 9, "depth": 153}, {"id": "room_17", "rx": 11, "ry": 49, "rw": 6, "rh": 11, "depth": 166}, {"id": "room_18", "rx": 21, "ry": 49, "rw": 9, "rh": 11, "depth": 169}, {"id": "room_16", "rx": 2, "ry": 49, "rw": 5, "rh": 11, "depth": 176}, {"id": "room_11", "rx": 2, "ry": 36, "rw": 9, "rh": 9, "depth": 182}, {"id": "room_12", "rx": 15, "ry": 36, "rw": 7, "rh": 9, "depth": 182}, {"id": "room_9", "rx": 18, "ry": 14, "rw": 4, "rh": 9, "depth": 198}, {"id": "room_7", "rx": 10, "ry": 14, "rw": 4, "rh": 5, "depth": 202}, {"id": "room_8", "rx": 2, "ry": 23, "rw": 12, "rh": 9, "depth": 203}, {"id": "room_10", "rx": 18, "ry": 27, "rw": 4, "rh": 5, "depth": 203}, {"id": "room_6", "rx": 2, "ry": 14, "rw": 4, "rh": 5, "depth": 210}, {"id": "room_13", "rx": 26, "ry": 14, "rw": 4, "rh": 9, "depth": 214}, {"id": "room_14", "rx": 26, "ry": 27, "rw": 4, "rh": 4, "depth": 225}, {"id": "room_15", "rx": 26, "ry": 35, "rw": 4, "rh": 10, "depth": 236}],
-    encounters: [{"name": "Pale Duchess", "row": 0, "col": 2, "strength": 16, "skill": 12, "armour": 3, "health": 100, "attacks": 1, "maxHealth": 100, "level": 3, "type": "monster", "room": "room_1", "cx": 17, "cy": 6, "removedOnDefeat": true}, {"name": "Court Jester", "row": 0, "col": 0, "strength": 12, "skill": 10, "armour": 2, "health": 100, "attacks": 1, "maxHealth": 100, "level": 1, "type": "monster", "room": "room_2", "cx": 27, "cy": 6, "removedOnDefeat": true}, {"type": "items", "room": "room_4", "cx": 43, "cy": 6, "items": [{"id": "hp_c", "name": "Health Potion", "type": "consumable", "healAmount": 40}], "gold": 0, "removedOnDefeat": true}, {"type": "items", "room": "room_5", "cx": 55, "cy": 6, "items": [{"id": "hp_c", "name": "Health Potion", "type": "consumable", "healAmount": 40}], "gold": 0, "removedOnDefeat": true}, {"type": "items", "room": "room_19", "cx": 40, "cy": 18, "items": [{"id": "gp_c", "name": "Gold Pouch", "isGold": true, "amount": 29}], "gold": 0, "removedOnDefeat": true}, {"name": "Undead Marchioness", "row": 2, "col": 3, "strength": 34, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 14, "type": "monster", "room": "room_21", "cx": 38, "cy": 29, "removedOnDefeat": true}, {"name": "Skeleton Queen", "row": 2, "col": 2, "strength": 32, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 13, "type": "monster", "room": "room_22", "cx": 48, "cy": 29, "removedOnDefeat": true}, {"name": "Skeleton Queen", "row": 2, "col": 2, "strength": 32, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 13, "type": "monster", "room": "room_23", "cx": 57, "cy": 29, "removedOnDefeat": true}, {"name": "Undead Bishop", "row": 2, "col": 0, "strength": 28, "skill": 18, "armour": 6, "health": 100, "attacks": 2, "maxHealth": 100, "level": 11, "type": "monster", "room": "room_26", "cx": 44, "cy": 41, "removedOnDefeat": true}, {"name": "Undead Marchioness", "row": 2, "col": 3, "strength": 34, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 14, "type": "monster", "room": "room_24", "cx": 36, "cy": 37, "removedOnDefeat": true}, {"name": "Skeleton Queen", "row": 2, "col": 2, "strength": 32, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 13, "type": "monster", "room": "room_28", "cx": 55, "cy": 38, "removedOnDefeat": true}, {"name": "Skeleton Queen", "row": 2, "col": 2, "strength": 32, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 13, "type": "monster", "room": "room_29", "cx": 55, "cy": 53, "removedOnDefeat": true}, {"name": "Shroud Duenna", "row": 3, "col": 3, "strength": 48, "skill": 26, "armour": 14, "health": 100, "attacks": 2, "maxHealth": 100, "level": 19, "type": "monster", "room": "room_17", "cx": 14, "cy": 54, "removedOnDefeat": true}, {"name": "Gaunt Chamberlain", "row": 3, "col": 2, "strength": 44, "skill": 24, "armour": 12, "health": 100, "attacks": 2, "maxHealth": 100, "level": 18, "type": "monster", "room": "room_18", "cx": 25, "cy": 54, "removedOnDefeat": true}, {"name": "Bone Warlord", "row": 3, "col": 0, "strength": 38, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 16, "type": "monster", "room": "room_16", "cx": 4, "cy": 54, "removedOnDefeat": true}, {"name": "Undead Governess", "row": 3, "col": 1, "strength": 40, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 17, "type": "monster", "room": "room_11", "cx": 6, "cy": 40, "removedOnDefeat": true}, {"name": "Undead Governess", "row": 3, "col": 1, "strength": 40, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 17, "type": "monster", "room": "room_12", "cx": 18, "cy": 40, "removedOnDefeat": true}, {"name": "Bone Warlord", "row": 3, "col": 0, "strength": 38, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 16, "type": "monster", "room": "room_7", "cx": 12, "cy": 16, "removedOnDefeat": true}, {"name": "Bone Warlord", "row": 3, "col": 0, "strength": 38, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 16, "type": "monster", "room": "room_8", "cx": 8, "cy": 27, "removedOnDefeat": true}, {"name": "Shroud Duenna", "row": 3, "col": 3, "strength": 48, "skill": 26, "armour": 14, "health": 100, "attacks": 2, "maxHealth": 100, "level": 19, "type": "monster", "room": "room_6", "cx": 4, "cy": 16, "removedOnDefeat": true}, {"name": "Undead Governess", "row": 3, "col": 1, "strength": 40, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 17, "type": "monster", "room": "room_14", "cx": 28, "cy": 29, "removedOnDefeat": true}, {"type": "npc", "room": "room_20", "name": "Old Steward", "cx": 55, "cy": 18, "action": {"type": "shelter"}, "dialogue": "placeholder", "removedOnDefeat": false}, {"type": "npc", "room": "room_27", "name": "Pale Archivist", "cx": 40, "cy": 55, "action": {"type": "secret_door", "wants": "Ancient Seal", "wantsId": "ancient_seal"}, "dialogue": "placeholder", "removedOnDefeat": false}, {"type": "npc", "room": "room_10", "name": "Blind Navigator", "cx": 20, "cy": 29, "action": {"type": "teleport", "wants": "Compass Shard", "wantsId": "compass_shard"}, "dialogue": "placeholder", "removedOnDefeat": false}, {"type": "npc", "room": "room_13", "name": "Scorched Monk", "cx": 28, "cy": 18, "action": {"type": "fire_clear", "wants": "Ice Crystal", "wantsId": "ice_crystal"}, "dialogue": "placeholder", "removedOnDefeat": false}],
-  },
-  {
-    map: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111000011111111000011111111110000111111111111100000011110000111111100001111111100001111111111000011111000011110000111111000011111110000111111110000111111111100001111100001111000000111100001111111000011111111000011111111110000111110000111100000010000000111111100001111111100001000000000000010100000010000000001000000011111110000100000000000100000000000001111111111000000000100000001111111000010000000000010000000011111100000000000000000010000000111111100001000000000001000000001001010000000000000000001111000011111110000100000000000111111111100101111111111111000000111100001111111000011111111000011111111110010111111111111100000011110000111111100001111111100001111111111001011111111111110000001111000011111110000111111110000111111111100101111111111111000000111100001111111000011111111000011111111110010111111111111100000011110000111111100001111111100001111111111001011111111111110000001111000011111110000111111110000111111111100101111111111111000000000000001000000000010100000000011111111110010111111111111100000000000000100000000001010000000001111111111001011111111111110000000000000010000011111111000000000111111111100101111111111111000000000000001000001001000000000000011111111110010111111111111100000011111111111111100101111111100001000000000001011111111111110000001111111111111110010111111110000100000000000101111111111111000000111111111111111001011111111000010000000000010111111111111100000011111111111111100101111111100001000000000001011111111111110000001111111111111110010111111110000111111111100100000000000000000000111111111111111001011111111000011111111110010000000000000000000011111111111111100101000000000001111111111001111100000000000000001111111111111110011100000000000111111111100000010000000000000000111111111111111000011100000000011111111110000111111111111100000011111111111111100001010000000001111111111000011111111111110000001111111111111110000111111111111111111111100001111111111111000000111111111111111000011111111000011111111110000111111111111100000011111111111111100001111111100001111111111000011111111111110000001111111111111110000111111110000111111111100001111111111111000000000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000011111111111111111111110000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000011111110000111111110000111111110000111111100001111111111110000001111111000011111111000011111111000011111110000111111111111000000111111100001111111100001111111100001111111000011111111111100000011111110000111111110111111111110000111111100001111111111110000001111111000011111111010011111111000010100000000111111111111000000111111100001111111101001000000100001110000000011111111111100000011111110000111111110100100000011111100000000001111111111110000001111111000011111111010010000000001010000000000111111111111000000100000000001111111101001000000000101111111000011111111111100000010000000000111111110100111111110011111111100001111111111110000001000000000011111111010011111111001011111110000100000000000000000100000000001111111101001111111100101111111000010000000000000000011111110000111111110100111111110010000000000001000000000000000001111111000010000000010011111111001000000000000100000000000000000111111100001000000111001111111100111110000000011111111111100000011111110000100000010000111111110000001000000001111000011110000001111111000010000001000011111111000011111111111111100001111000000111111100001111111100001111111100001111111000011110000111100000011111111111111111110000111111110000111111100001111000011110000001111111000011111111000011111111000011111110000111100001111000000111111100001111111100001111111100001111111000011110000111100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    start: [0, 4],
-    stairs: [8, 39],
-    doors: [{"cells": [[1, 4]], "id": "door_0", "locked": null}, {"cells": [[2, 6]], "id": "door_1", "locked": null}, {"cells": [[2, 9]], "id": "door_2", "locked": "yellow"}, {"cells": [[2, 47]], "id": "door_3", "locked": null}, {"cells": [[2, 50]], "id": "door_4", "locked": "purple"}, {"cells": [[6, 2]], "id": "door_5", "locked": "green"}, {"cells": [[9, 2]], "id": "door_6", "locked": null}, {"cells": [[9, 57]], "id": "door_7", "locked": null}, {"cells": [[10, 17]], "id": "door_8", "locked": null}, {"cells": [[10, 20]], "id": "door_9", "locked": null}, {"cells": [[12, 57]], "id": "door_10", "locked": null}, {"cells": [[13, 52]], "id": "door_11", "locked": null}, {"cells": [[13, 55]], "id": "door_12", "locked": null}, {"cells": [[16, 20]], "id": "door_13", "locked": null}, {"cells": [[16, 35]], "id": "door_14", "locked": null}, {"cells": [[20, 55]], "id": "door_15", "locked": null}, {"cells": [[21, 7]], "id": "door_16", "locked": null}, {"cells": [[21, 10]], "id": "door_17", "locked": null}, {"cells": [[21, 17]], "id": "door_18", "locked": null}, {"cells": [[21, 27]], "id": "door_19", "locked": null}, {"cells": [[21, 30]], "id": "door_20", "locked": null}, {"cells": [[23, 17]], "id": "door_21", "locked": null}, {"cells": [[23, 30]], "id": "door_22", "locked": null}, {"cells": [[24, 42]], "id": "door_23", "locked": null}, {"cells": [[25, 44]], "id": "door_24", "locked": null}, {"cells": [[25, 47]], "id": "door_25", "locked": null}, {"cells": [[29, 31]], "id": "door_26", "locked": null}, {"cells": [[32, 31]], "id": "door_27", "locked": null}, {"cells": [[32, 44]], "id": "door_28", "locked": null}, {"cells": [[33, 6]], "id": "door_29", "locked": null}, {"cells": [[33, 9]], "id": "door_30", "locked": null}, {"cells": [[33, 21]], "id": "door_31", "locked": null}, {"cells": [[33, 24]], "id": "door_32", "locked": null}, {"cells": [[36, 48]], "id": "door_33", "locked": null}, {"cells": [[37, 38]], "id": "door_34", "locked": null}, {"cells": [[37, 43]], "id": "door_35", "locked": null}, {"cells": [[37, 46]], "id": "door_36", "locked": null}, {"cells": [[39, 43]], "id": "door_37", "locked": null}, {"cells": [[39, 54]], "id": "door_38", "locked": null}, {"cells": [[42, 9]], "id": "door_39", "locked": null}, {"cells": [[44, 55]], "id": "door_40", "locked": "orange"}, {"cells": [[47, 6]], "id": "door_41", "locked": null}, {"cells": [[47, 9]], "id": "door_42", "locked": null}, {"cells": [[47, 55]], "id": "door_43", "locked": null}, {"cells": [[48, 49]], "id": "door_44", "locked": null}, {"cells": [[48, 52]], "id": "door_45", "locked": "red"}, {"cells": [[49, 6]], "id": "door_46", "locked": null}, {"cells": [[49, 28]], "id": "door_47", "locked": null}, {"cells": [[52, 2]], "id": "door_48", "locked": null}, {"cells": [[52, 53]], "id": "door_49", "locked": "blue"}, {"cells": [[55, 2]], "id": "door_50", "locked": null}, {"cells": [[55, 53]], "id": "door_51", "locked": null}, {"cells": [[56, 6]], "id": "door_52", "locked": null}],
-    keys:  [{"x": 2, "y": 4, "keyType": "yellow"}, {"x": 5, "y": 4, "keyType": "green"}, {"x": 4, "y": 30, "keyType": "orange"}, {"x": 6, "y": 51, "keyType": "purple"}, {"x": 59, "y": 11, "keyType": "red"}, {"x": 38, "y": 19, "keyType": "blue"}],
-    rooms: [{"id": "room_0", "rx": 2, "ry": 2, "rw": 4, "rh": 4, "depth": 4}, {"id": "room_1", "rx": 2, "ry": 10, "rw": 4, "rh": 7, "depth": 13}, {"id": "room_2", "rx": 10, "ry": 2, "rw": 7, "rh": 15, "depth": 22}, {"id": "room_3", "rx": 2, "ry": 21, "rw": 15, "rh": 14, "depth": 39}, {"id": "room_5", "rx": 21, "ry": 11, "rw": 8, "rh": 6, "depth": 53}, {"id": "room_6", "rx": 21, "ry": 21, "rw": 8, "rh": 6, "depth": 61}, {"id": "room_7", "rx": 21, "ry": 31, "rw": 8, "rh": 4, "depth": 62}, {"id": "room_4", "rx": 21, "ry": 2, "rw": 8, "rh": 5, "depth": 63}, {"id": "room_10", "rx": 33, "ry": 25, "rw": 10, "rh": 10, "depth": 74}, {"id": "room_21", "rx": 37, "ry": 39, "rw": 7, "rh": 4, "depth": 81}, {"id": "room_9", "rx": 33, "ry": 10, "rw": 10, "rh": 11, "depth": 89}, {"id": "room_22", "rx": 37, "ry": 47, "rw": 7, "rh": 4, "depth": 89}, {"id": "room_19", "rx": 25, "ry": 39, "rw": 8, "rh": 5, "depth": 94}, {"id": "room_8", "rx": 33, "ry": 2, "rw": 10, "rh": 4, "depth": 100}, {"id": "room_23", "rx": 37, "ry": 55, "rw": 7, "rh": 5, "depth": 101}, {"id": "room_25", "rx": 48, "ry": 53, "rw": 4, "rh": 7, "depth": 110}, {"id": "room_11", "rx": 47, "ry": 2, "rw": 5, "rh": 4, "depth": 111}, {"id": "room_20", "rx": 25, "ry": 48, "rw": 8, "rh": 12, "depth": 111}, {"id": "room_12", "rx": 56, "ry": 2, "rw": 4, "rh": 4, "depth": 120}, {"id": "room_13", "rx": 47, "ry": 10, "rw": 13, "rh": 15, "depth": 120}, {"id": "room_18", "rx": 13, "ry": 56, "rw": 8, "rh": 4, "depth": 121}, {"id": "room_26", "rx": 56, "ry": 53, "rw": 4, "rh": 7, "depth": 122}, {"id": "room_24", "rx": 48, "ry": 39, "rw": 12, "rh": 10, "depth": 124}, {"id": "room_16", "rx": 2, "ry": 51, "rw": 7, "rh": 9, "depth": 134}, {"id": "room_14", "rx": 47, "ry": 29, "rw": 13, "rh": 6, "depth": 135}, {"id": "room_17", "rx": 13, "ry": 39, "rw": 8, "rh": 13, "depth": 138}, {"id": "room_15", "rx": 2, "ry": 39, "rw": 7, "rh": 8, "depth": 152}],
-    encounters: [{"name": "Crimson Count", "row": 1, "col": 2, "strength": 24, "skill": 16, "armour": 5, "health": 100, "attacks": 1, "maxHealth": 100, "level": 8, "type": "monster", "room": "room_1", "cx": 4, "cy": 13, "removedOnDefeat": true}, {"name": "Blue Lady", "row": 1, "col": 3, "strength": 26, "skill": 16, "armour": 5, "health": 100, "attacks": 1, "maxHealth": 100, "level": 9, "type": "monster", "room": "room_2", "cx": 13, "cy": 9, "removedOnDefeat": true}, {"name": "Blue Lady", "row": 1, "col": 3, "strength": 26, "skill": 16, "armour": 5, "health": 100, "attacks": 1, "maxHealth": 100, "level": 9, "type": "monster", "room": "room_3", "cx": 9, "cy": 28, "removedOnDefeat": true}, {"name": "Ghoul Gentleman", "row": 2, "col": 1, "strength": 30, "skill": 18, "armour": 6, "health": 100, "attacks": 2, "maxHealth": 100, "level": 12, "type": "monster", "room": "room_5", "cx": 25, "cy": 14, "removedOnDefeat": true}, {"name": "Undead Bishop", "row": 2, "col": 0, "strength": 28, "skill": 18, "armour": 6, "health": 100, "attacks": 2, "maxHealth": 100, "level": 11, "type": "monster", "room": "room_6", "cx": 25, "cy": 24, "removedOnDefeat": true}, {"name": "Undead Bishop", "row": 2, "col": 0, "strength": 28, "skill": 18, "armour": 6, "health": 100, "attacks": 2, "maxHealth": 100, "level": 11, "type": "monster", "room": "room_7", "cx": 25, "cy": 33, "removedOnDefeat": true}, {"type": "items", "room": "room_4", "cx": 25, "cy": 4, "items": [{"id": "hp_c2", "name": "Health Potion", "type": "consumable", "healAmount": 40}], "gold": 30, "removedOnDefeat": true}, {"name": "Undead Marchioness", "row": 2, "col": 3, "strength": 34, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 14, "type": "monster", "room": "room_10", "cx": 38, "cy": 30, "removedOnDefeat": true}, {"name": "Undead Marchioness", "row": 2, "col": 3, "strength": 34, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 14, "type": "monster", "room": "room_21", "cx": 40, "cy": 41, "removedOnDefeat": true}, {"name": "Undead Marchioness", "row": 2, "col": 3, "strength": 34, "skill": 20, "armour": 8, "health": 100, "attacks": 2, "maxHealth": 100, "level": 14, "type": "monster", "room": "room_9", "cx": 38, "cy": 15, "removedOnDefeat": true}, {"name": "Undead Bishop", "row": 2, "col": 0, "strength": 28, "skill": 18, "armour": 6, "health": 100, "attacks": 2, "maxHealth": 100, "level": 11, "type": "monster", "room": "room_22", "cx": 40, "cy": 49, "removedOnDefeat": true}, {"name": "Undead Bishop", "row": 2, "col": 0, "strength": 28, "skill": 18, "armour": 6, "health": 100, "attacks": 2, "maxHealth": 100, "level": 11, "type": "monster", "room": "room_19", "cx": 29, "cy": 41, "removedOnDefeat": true}, {"name": "Gaunt Chamberlain", "row": 3, "col": 2, "strength": 44, "skill": 24, "armour": 12, "health": 100, "attacks": 2, "maxHealth": 100, "level": 18, "type": "monster", "room": "room_8", "cx": 38, "cy": 4, "removedOnDefeat": true}, {"name": "Gaunt Chamberlain", "row": 3, "col": 2, "strength": 44, "skill": 24, "armour": 12, "health": 100, "attacks": 2, "maxHealth": 100, "level": 18, "type": "monster", "room": "room_23", "cx": 40, "cy": 57, "removedOnDefeat": true}, {"name": "Shroud Duenna", "row": 3, "col": 3, "strength": 48, "skill": 26, "armour": 14, "health": 100, "attacks": 2, "maxHealth": 100, "level": 19, "type": "monster", "room": "room_11", "cx": 49, "cy": 4, "removedOnDefeat": true}, {"name": "Gaunt Chamberlain", "row": 3, "col": 2, "strength": 44, "skill": 24, "armour": 12, "health": 100, "attacks": 2, "maxHealth": 100, "level": 18, "type": "monster", "room": "room_12", "cx": 58, "cy": 4, "removedOnDefeat": true}, {"name": "Undead Governess", "row": 3, "col": 1, "strength": 40, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 17, "type": "monster", "room": "room_13", "cx": 53, "cy": 17, "removedOnDefeat": true}, {"name": "Bone Warlord", "row": 3, "col": 0, "strength": 38, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 16, "type": "monster", "room": "room_18", "cx": 17, "cy": 58, "removedOnDefeat": true}, {"name": "Gaunt Chamberlain", "row": 3, "col": 2, "strength": 44, "skill": 24, "armour": 12, "health": 100, "attacks": 2, "maxHealth": 100, "level": 18, "type": "monster", "room": "room_26", "cx": 58, "cy": 56, "removedOnDefeat": true}, {"name": "Undead Governess", "row": 3, "col": 1, "strength": 40, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 17, "type": "monster", "room": "room_24", "cx": 54, "cy": 44, "removedOnDefeat": true}, {"type": "items", "room": "room_16", "cx": 5, "cy": 55, "items": [{"id": "hp_c2", "name": "Health Potion", "type": "consumable", "healAmount": 40}], "gold": 68, "removedOnDefeat": true}, {"type": "items", "room": "room_14", "cx": 53, "cy": 32, "items": [{"id": "hp_c2", "name": "Health Potion", "type": "consumable", "healAmount": 40}], "gold": 69, "removedOnDefeat": true}, {"name": "Bone Warlord", "row": 3, "col": 0, "strength": 38, "skill": 22, "armour": 10, "health": 100, "attacks": 2, "maxHealth": 100, "level": 16, "type": "monster", "room": "room_17", "cx": 17, "cy": 45, "removedOnDefeat": true}, {"type": "dragon_boss", "room": "room_15", "cx": 5, "cy": 43, "name": "The Golden Dragon", "removedOnDefeat": true}],
-  },
-];
-
-const CASTLE_SIZE = 64;
-const CASTLE_VIEW = 15;
-const CASTLE_HALF = 7;
-const CASTLE_CELL = 32;
-const CASTLE_CANVAS = CASTLE_VIEW * CASTLE_CELL; // 480
-
-const KEY_COLORS_C = {
-  red:"#c0392b",blue:"#2980b9",green:"#27ae60",
-  yellow:"#f39c12",purple:"#8e44ad",orange:"#e67e22"
-};
-
-function castlePassable(m, x, y) {
-  return x>=0&&y>=0&&x<CASTLE_SIZE&&y<CASTLE_SIZE&&m[y*CASTLE_SIZE+x]==="1";
-}
-
-function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,onDismiss}){
-  const [paid,setPaid]=React.useState(false);
-  const action=enc.action||{};
-  const inv=heroState.inventory||[];
-  const hasItem=action.wantsId?inv.some(i=>i.id===action.wantsId||i.uid===action.wantsId):true;
-  const isShelter=action.type==="shelter";
-  const canAct=!paid&&(isShelter||(action.wantsId?hasItem:true));
-  const outerStyle={position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200};
-  const innerStyle={background:C.panel,border:"2px solid "+C.border,borderRadius:10,padding:20,maxWidth:360,width:"90%",color:C.text};
-  const btnStyle=(col,dis)=>({padding:"8px 16px",background:"transparent",border:"1.5px solid "+(dis?"#333":col),color:dis?"#444":col,cursor:dis?"not-allowed":"pointer",borderRadius:3,fontSize:12});
-  const clearTrigger=()=>{
-    const entryKey=enc.cx+","+enc.cy;
-    setDefeatedRooms(dr=>{const nd=new Set(dr);nd.delete(entryKey+"_triggered");return nd;});
-  };
-  return(
-    <div style={outerStyle}><div style={innerStyle}>
-      <div style={{color:"#6a9a8a",fontSize:14,marginBottom:10}}>
-        {isShelter?"🛖":"🧙"} {enc.name}
-      </div>
-      <div style={{fontSize:12,color:C.text,marginBottom:10,fontStyle:"italic"}}>
-        "{isShelter?"Rest here, traveller. You are safe within these walls.":(enc.dialogue||"I need something in return for my help.")}"
-      </div>
-      {action.wants&&!isShelter&&<div style={{fontSize:11,color:C.dim,marginBottom:10}}>
-        Requires: <span style={{color:C.gold}}>{action.wants}</span>
-        {hasItem&&<span style={{color:"#6fcf97",marginLeft:8}}>✓ in inventory</span>}
-      </div>}
-      {!isShelter&&<div style={{fontSize:11,color:"#6a9a8a",marginBottom:14}}>
-        Reward: {action.type==="secret_door"?"🚪 Secret passage":
-                 action.type==="teleport"?"🌀 Teleport activated":
-                 action.type==="fire_clear"?"❄ Fire cleared":"?"}
-      </div>}
-      <div style={{display:"flex",gap:8}}>
-        <button style={{...btnStyle(isShelter?"#2d8a4e":C.gold,!canAct),flex:1}}
-          onClick={()=>{
-            if(!canAct)return;
-            setPaid(true);
-            if(isShelter){
-              setHeroState(h=>({...h,health:100}));
-              addLog("🛖 You rest and recover fully.");
-              clearTrigger();
-              onDismiss(false);
-            } else {
-              if(action.wantsId) setHeroState(h=>({...h,inventory:h.inventory.filter(i=>i.id!==action.wantsId&&i.uid!==action.wantsId)}));
-              addLog("🧙 "+enc.name+": deal done.");
-              onDismiss(true,action.type);
-            }
-          }}>
-          {isShelter?"Sleep (restore HP)":(action.wantsId&&!hasItem?"Need: "+action.wants:"Help me")}
-        </button>
-        <button style={{...btnStyle(C.dim,false),flex:1}}
-          onClick={()=>{clearTrigger();onDismiss(false);}}>
-          Leave
-        </button>
-      </div>
-    </div></div>
-  );
-}
-
-
-function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}){
-  const canvasRef=React.useRef(null);
-  const [levelIdx,setLevelIdx]=React.useState(0);
-  const level=CASTLE_LEVELS[levelIdx];
-
-  const [heroPos,setHeroPos]=React.useState({x:level.start[0],y:level.start[1]});
-  const heroPosRef=React.useRef({x:level.start[0],y:level.start[1]});
-  const [doors,setDoors]=React.useState(level.doors.map(d=>({...d,open:false})));
-  const doorsRef=React.useRef(doors);
-  React.useEffect(()=>{doorsRef.current=doors;},[doors]);
-  const [heroKeys,setHeroKeys]=React.useState([]);
-  const heroKeysRef=React.useRef([]);
-  React.useEffect(()=>{heroKeysRef.current=heroKeys;},[heroKeys]);
-  const [groundKeys,setGroundKeys]=React.useState(level.keys);
-  const [encounters,setEncounters]=React.useState(level.encounters);
-  const encRef=React.useRef(encounters);
-  React.useEffect(()=>{encRef.current=encounters;},[encounters]);
-  const [defeatedRooms,setDefeatedRooms]=React.useState(new Set());
-  const [encModal,setEncModal]=React.useState(null);
-  const [target,setTarget]=React.useState(null);
-  const pathRef=React.useRef([]);
-  const exploredRef=React.useRef(new Set());
-  const lastCorridorRef=React.useRef({x:level.start[0],y:level.start[1]});
-  const [msg,setMsg]=React.useState(null);
-  const [log,setLog]=React.useState([]);
-  const addCLog=m=>{addLog(m);setLog(p=>[m,...p].slice(0,15));};
-  
-  // Secret doors, teleporters, fire state
-  const [secretRevealed,setSecretRevealed]=React.useState(new Set());
-  const [teleportsActive,setTeleportsActive]=React.useState(new Set());
-  const [fireCleared,setFireCleared]=React.useState(new Set());  // set of room ids with fire cleared
-  const [combatModal,setCombatModal]=React.useState(null);
-
-  const C={bg:"#0d0a06",panel:"#1a1510",border:"#3d2f18",gold:"#c9a84c",text:"#e8dcc8",dim:"#7a6a4a",red:"#c0392b",green:"#2d8a4e",blue:"#2e6da4"};
-
-  // Switch level
-  const goToLevel=(idx)=>{
-    const lv=CASTLE_LEVELS[idx];
-    setLevelIdx(idx);
-    setHeroPos({x:lv.start[0],y:lv.start[1]});
-    heroPosRef.current={x:lv.start[0],y:lv.start[1]};
-    setDoors(lv.doors.map(d=>({...d,open:false})));
-    doorsRef.current=lv.doors.map(d=>({...d,open:false}));
-    setHeroKeys([]);heroKeysRef.current=[];
-    setGroundKeys(lv.keys);
-    setEncounters(lv.encounters);
-    encRef.current=lv.encounters;
-    setDefeatedRooms(new Set());
-    exploredRef.current=new Set();
-    pathRef.current=[];setTarget(null);
-  };
-
-  const m=level.map;
-  const rooms=level.rooms;
-
-  const isPassable=(x,y)=>castlePassable(m,x,y);
-
-  const doorAt=(x,y,doorList,inclSecret)=>{
-    for(const d of doorList){
-      if(d.isSecret&&!secretRevealed.has(d.id)&&!inclSecret)continue;
-      for(const c of d.cells) if(c[0]===x&&c[1]===y)return d;
-    }
-    return null;
-  };
-  
-  const isFire=(x,y)=>{
-    const room=rooms.find(r=>x>=r.rx&&x<r.rx+r.rw&&y>=r.ry&&y<r.ry+r.rh);
-    if(!room||fireCleared.has(room.id))return false;
-    const enc=encRef.current.find(e=>e.type==="fire"&&e.room===room.id);
-    return enc&&enc.cells&&enc.cells.some(c=>c[0]===x&&c[1]===y);
-  };
-
-  const canPass=(x,y,doorList,keyList)=>{
-    if(!isPassable(x,y))return false;
-    if(isFire(x,y))return false;
-    const d=doorAt(x,y,doorList);
-    if(d&&!d.open){
-      if(d.isSecret&&!secretRevealed.has(d.id))return false;
-      if(d.locked)return keyList.some(k=>k===d.locked);
-    }
-    return true;
-  };
-
-  // Visited set for BFS path
-  const bfsPath=(sx,sy,tx,ty,doorList,keyList,explored)=>{
-    if(sx===tx&&sy===ty)return[];
-    const vis=new Map([[`${sx},${sy}`,null]]);
-    const q=[[sx,sy]];
-    while(q.length){
-      const[x,y]=q.shift();
-      for(const[dx,dy]of[[0,1],[0,-1],[1,0],[-1,0]]){
-        const nx=x+dx,ny=y+dy,k=`${nx},${ny}`;
-        if(!canPass(nx,ny,doorList,keyList))continue;
-        if(explored&&!explored.has(k))continue;
-        if(vis.has(k))continue;
-        vis.set(k,`${x},${y}`);
-        if(nx===tx&&ny===ty){
-          const path=[];let c=k;
-          while(c){const[px,py]=c.split(",").map(Number);path.unshift({x:px,y:py});c=vis.get(c);}
-          return path;
-        }
-        q.push([nx,ny]);
-      }
-    }
-    return null;
-  };
-
-  // Compute LOS
-  const computeVis=(hx,hy,doorList)=>{
-    const vis=new Set([`${hx},${hy}`]);
-    for(let a=0;a<360;a+=0.5){
-      const rad=a*Math.PI/180;
-      let rx=hx+0.5,ry=hy+0.5;
-      for(let d=0;d<CASTLE_HALF+1;d++){
-        const cx=Math.floor(rx),cy=Math.floor(ry);
-        if(cx<0||cy<0||cx>=CASTLE_SIZE||cy>=CASTLE_SIZE)break;
-        vis.add(`${cx},${cy}`);
-        if(!isPassable(cx,cy))break;
-        const sd=doorAt(cx,cy,doorList);
-        if(sd&&!sd.open&&!(cx===hx&&cy===hy))break;
-        rx+=Math.cos(rad)*0.5;ry+=Math.sin(rad)*0.5;
-      }
-    }
-    return vis;
-  };
-
-  // Floor patterns (same as castle_test_v1)
-  const PATTERNS=["chessboard","concentric","herringbone","pinwheel"];
-  const PALETTES={
-    chessboard:[["#9b4a4a","#4a6a9b"],["#4a7a3a","#9b8a30"],["#6a3a8a","#2a7a7a"]],
-    concentric:[["#8a3a3a","#b8a888","#3a5a8a"],["#3a6a3a","#a8988a","#8a7a2a"]],
-    herringbone:[["#9a5030","#4a5a70"],["#3a6030","#8a6820"]],
-    pinwheel:[["#3a508a","#8a7028"],["#6a2838","#4a6a50"]],
-  };
-  const roomPatterns=React.useRef({});
-  if(Object.keys(roomPatterns.current).length===0){
-    const rng=new Math.random;
-    rooms.forEach((r,i)=>{
-      if(r.rw>5&&r.rh>5){
-        const p=PATTERNS[i%PATTERNS.length];
-        const pal=PALETTES[p][i%PALETTES[p].length];
-        roomPatterns.current[r.id]={p,pal};
-      }
-    });
-  }
-
-  const pnoise=(x,y)=>{const s=Math.sin(x*127.1+y*311.7)*43758.5453;return s-Math.floor(s);};
-
-  // Draw
-  const draw=React.useCallback((hx,hy,tgt,doorList,gKeys,encs)=>{
-    const canvas=canvasRef.current;if(!canvas)return;
-    const ctx=canvas.getContext("2d");
-    ctx.fillStyle="#000";ctx.fillRect(0,0,CASTLE_CANVAS,CASTLE_CANVAS);
-    const vis=computeVis(hx,hy,doorList);
-    for(let vy=0;vy<CASTLE_VIEW;vy++){
-      for(let vx=0;vx<CASTLE_VIEW;vx++){
-        const wx=hx-CASTLE_HALF+vx,wy=hy-CASTLE_HALF+vy;
-        if(wx<0||wy<0||wx>=CASTLE_SIZE||wy>=CASTLE_SIZE)continue;
-        const px=vx*CASTLE_CELL,py=vy*CASTLE_CELL;
-        const S=CASTLE_CELL,R=S/2,C2=S/2;
-        const cellKey=`${wx},${wy}`;
-        const isVis=vis.has(cellKey);
-        if(isVis)exploredRef.current.add(cellKey);
-        const isExp=exploredRef.current.has(cellKey);
-        if(!isVis&&!isExp){ctx.fillStyle="#000";ctx.fillRect(px,py,S,S);continue;}
-
-        if(!isPassable(wx,wy)){
-          // Wall
-          const n=(pnoise(wx,wy)-0.5)*20+(pnoise(wx*3,wy*3)-0.5)*8;
-          const c=Math.round(40+n);
-          ctx.fillStyle=`rgb(${c},${c},${c})`;ctx.fillRect(px,py,S,S);
-          if(isVis){ctx.globalAlpha=0.15;ctx.strokeStyle="#fff";ctx.lineWidth=0.5;
-            ctx.strokeRect(px+S*0.2,py+S*0.15,S*0.5,S*0.6);ctx.globalAlpha=1;}
-        } else {
-          // Floor
-          const room=rooms.find(r=>wx>=r.rx&&wx<r.rx+r.rw&&wy>=r.ry&&wy<r.ry+r.rh);
-          const rp=room?roomPatterns.current[room.id]:null;
-          if(rp){
-            const lx=wx-room.rx,ly=wy-room.ry,rw=room.rw,rh=room.rh,pal=rp.pal;
-            let idx=0;
-            if(rp.p==="chessboard")idx=(lx+ly)%2;
-            if(rp.p==="concentric")idx=Math.min(lx,ly,rw-1-lx,rh-1-ly)%pal.length;
-            if(rp.p==="herringbone")idx=(Math.floor(lx/2)+Math.floor(ly/2))%2;
-            if(rp.p==="pinwheel")idx=(Math.floor(lx/2)+Math.floor(ly/2))%2===0?(lx%2===0?0:1):(lx%2===0?1:0);
-            ctx.fillStyle=pal[idx%pal.length];ctx.fillRect(px,py,S,S);
-            ctx.globalAlpha=0.05+(pnoise(wx*3,wy*3)*0.05);
-            ctx.fillStyle=pnoise(wx*5,wy*5)>0.5?"#fff":"#000";ctx.fillRect(px,py,S,S);ctx.globalAlpha=1;
-          } else {
-            const n=(pnoise(wx,wy)-0.5)*18+(pnoise(wx*2,wy*2)-0.5)*8;
-            const nr=Math.round(110+n),ng=Math.round(95+n*0.8),nb=Math.round(75+n*0.6);
-            ctx.fillStyle=`rgb(${Math.min(255,Math.max(0,nr))},${Math.min(255,Math.max(0,ng))},${Math.min(255,Math.max(0,nb))})`;
-            ctx.fillRect(px,py,S,S);
-          }
-          // Door
-          const door=doorAt(wx,wy,doorList);
-          if(door){
-            const isSecret=door.isSecret&&!secretRevealed.has(door.id);
-            if(isSecret){ctx.fillStyle="#555";ctx.fillRect(px,py,S,S);}
-            else{
-              ctx.fillStyle=door.open?"#5a4a30":"#8b6914";ctx.fillRect(px+3,py+2,S-6,S-4);
-              if(door.locked&&!door.open){
-                ctx.strokeStyle=KEY_COLORS_C[door.locked]||"#fff";ctx.lineWidth=2;
-                ctx.strokeRect(px+3,py+2,S-6,S-4);
-                ctx.font=`${Math.round(S*0.35)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
-                ctx.fillText("🔒",px+S/2,py+S/2);
-              }
-            }
-          }
-          // Keys on ground
-          const gk=(gKeys||[]).find(k=>k.x===wx&&k.y===wy);
-          if(gk){
-            ctx.fillStyle=KEY_COLORS_C[gk.keyType]||"#fff";
-            ctx.font=`${Math.round(S*0.55)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
-            ctx.fillText("🗝",px+S/2,py+S/2);
-          }
-          // Encounters
-          const enc=(encs||[]).find(e=>e.cx===wx&&e.cy===wy);
-          if(enc){
-            const icon=enc.type==="monster"?"👾":enc.type==="dragon_boss"?"🐉":
-              enc.type==="npc"?{shelter:"🛖",secret_door:"🚪",teleport:"🌀",fire_clear:"❄"}[enc.action?.type]||"🧙":
-              enc.type==="items"?"📦":"?";
-            ctx.font=`${Math.round(S*0.65)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
-            ctx.fillText(icon,px+S/2,py+S/2+1);
-          }
-          // Stairs
-          const lv=CASTLE_LEVELS[levelIdx];
-          if(wx===lv.stairs[0]&&wy===lv.stairs[1]){
-            ctx.font=`${Math.round(S*0.6)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
-            ctx.fillText(levelIdx===0?"🪜":"🐉",px+S/2,py+S/2+1);
-          }
-          // Entrance
-          if(wx===lv.start[0]&&wy===lv.start[1]){
-            ctx.fillStyle="#c9a84c44";ctx.fillRect(px,py,S,S);
-          }
-        }
-        // Fog of war dim
-        if(!isVis){ctx.fillStyle="rgba(0,0,0,0.55)";ctx.fillRect(px,py,S,S);}
-      }
-    }
-    // Hero
-    const hpx=(CASTLE_HALF)*CASTLE_CELL,hpy=(CASTLE_HALF)*CASTLE_CELL;
-    const S=CASTLE_CELL;
-    ctx.fillStyle="#4a8ac8";ctx.beginPath();ctx.arc(hpx+S/2,hpy+S*0.38,S*0.18,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle="#5a9aD8";ctx.fillRect(hpx+S*0.32,hpy+S*0.56,S*0.36,S*0.32);
-    // Target
-    if(tgt){
-      const tvx=tgt.x-hx+CASTLE_HALF,tvy=tgt.y-hy+CASTLE_HALF;
-      if(tvx>=0&&tvy>=0&&tvx<CASTLE_VIEW&&tvy<CASTLE_VIEW){
-        ctx.strokeStyle="#c9a84c88";ctx.lineWidth=2;ctx.setLineDash([3,3]);
-        ctx.strokeRect(tvx*S+2,tvy*S+2,S-4,S-4);ctx.setLineDash([]);
-      }
-    }
-  },[levelIdx,rooms,secretRevealed,isFire]);
-
-  React.useEffect(()=>{draw(heroPos.x,heroPos.y,target,doors,groundKeys,encounters);},[heroPos,target,doors,groundKeys,encounters,secretRevealed,draw]);
-
-  // Click to move
-  const handleClick=React.useCallback((e)=>{
-    const rect=canvasRef.current.getBoundingClientRect();
-    const cx=Math.floor((e.clientX-rect.left)/CASTLE_CELL);
-    const cy=Math.floor((e.clientY-rect.top)/CASTLE_CELL);
-    const wx=heroPosRef.current.x-CASTLE_HALF+cx;
-    const wy=heroPosRef.current.y-CASTLE_HALF+cy;
-    if(!isPassable(wx,wy))return;
-    if(!exploredRef.current.has(`${wx},${wy}`))return;
-    const path=bfsPath(heroPosRef.current.x,heroPosRef.current.y,wx,wy,doorsRef.current,heroKeysRef.current,exploredRef.current);
-    if(path&&path.length>0){setTarget({x:wx,y:wy});pathRef.current=path;}
-  },[isPassable,bfsPath]);
-
-  // Walk step
-  React.useEffect(()=>{
-    if(!pathRef.current.length)return;
-    const timer=setTimeout(()=>{
-      if(!pathRef.current.length)return;
-      const next=pathRef.current[0];
-      pathRef.current=pathRef.current.slice(1);
-      const nx=next.x,ny=next.y;
-
-      // Door interaction
-      const d=doorsRef.current.find(d=>d.cells.some(c=>c[0]===nx&&c[1]===ny));
-      if(d&&!d.open){
-        if(d.isSecret&&!secretRevealed.has(d.id)){pathRef.current=[];setTarget(null);return;}
-        if(d.locked&&!heroKeysRef.current.includes(d.locked)){
-          addCLog(`🔒 Need the ${d.locked} key!`);pathRef.current=[];setTarget(null);return;
-        }
-        if(d.locked&&heroKeysRef.current.includes(d.locked)){
-          setDoors(ds=>ds.map(x=>x.id===d.id?{...x,open:true}:x));
-          addCLog(`🗝 ${d.locked} door opened!`);
-        } else {
-          setDoors(ds=>ds.map(x=>x.id===d.id?{...x,open:true}:x));
-        }
-      }
-
-      // Key pickup
-      const gk=groundKeys.find(k=>k.x===nx&&k.y===ny);
-      if(gk){
-        setHeroKeys(hk=>[...hk,gk.keyType]);heroKeysRef.current=[...heroKeysRef.current,gk.keyType];
-        setGroundKeys(ks=>ks.filter(k=>!(k.x===nx&&k.y===ny)));
-        addCLog(`🗝 Found ${gk.keyType} key!`);
-      }
-
-      // Track corridor for flee
-      const inRoom=rooms.some(r=>nx>=r.rx&&nx<r.rx+r.rw&&ny>=r.ry&&ny<r.ry+r.rh);
-      if(!inRoom)lastCorridorRef.current={x:nx,y:ny};
-
-      // Stairs
-      if(nx===level.stairs[0]&&ny===level.stairs[1]){
-        if(levelIdx===0){
-          pathRef.current=[];setTarget(null);
-          addCLog("🪜 You descend to the second level...");
-          goToLevel(1);return;
-        } else {
-          // Level 2 stairs = dragon boss trigger handled by encounters
-        }
-      }
-
-      // Encounters
-      const encs=encRef.current||[];
-      const wholeRoom=encs.find(e=>{
-        if(e.type!=="monster"&&e.type!=="dragon_boss"&&e.type!=="guardian")return false;
-        const r=rooms.find(r=>r.id===e.room);
-        return r&&nx>=r.rx&&nx<r.rx+r.rw&&ny>=r.ry&&ny<r.ry+r.rh;
-      });
-      const single=encs.find(e=>{
-        if(e.type==="monster"||e.type==="dragon_boss"||e.type==="guardian")return false;
-        return e.cx===nx&&e.cy===ny;
-      });
-      const activeEnc=wholeRoom||single;
-      if(activeEnc){
-        const ek=activeEnc.type==="monster"||activeEnc.type==="dragon_boss"?activeEnc.room:`${activeEnc.cx},${activeEnc.cy}`;
-        setDefeatedRooms(dr=>{
-          if(dr.has(ek+"_triggered"))return dr;
-          const nd=new Set(dr);nd.add(ek+"_triggered");
-          setTimeout(()=>{
-            if(activeEnc.type==="monster"){
-              setCombatModal({monster:{...activeEnc,maxHealth:100,level:activeEnc.level||1,isDragon:false},fromPos:{...lastCorridorRef.current}});
-            } else if(activeEnc.type==="dragon_boss"){
-              setCombatModal({monster:{...activeEnc,maxHealth:100,strength:40,skill:40,armour:25,attacks:2,level:35,isDragon:true},fromPos:{...lastCorridorRef.current}});
-            } else {
-              setEncModal({enc:activeEnc,fromPos:{...lastCorridorRef.current}});
-            }
-          },50);
-          return nd;
-        });
-      }
-
-      heroPosRef.current={x:nx,y:ny};setHeroPos({x:nx,y:ny});
-    },90);
-    return()=>clearTimeout(timer);
-  },[pathRef.current.length,heroPos,level,levelIdx,groundKeys,encounters,doors,rooms,secretRevealed]);
-
-  const dismissEnc=(remove,actionType)=>{
-    if(remove&&encModal?.enc){
-      const enc=encModal.enc;
-      if(enc.type==="npc"){
-        if(actionType==="secret_door"){
-          // Find secret door to reveal — mark room as secret_revealed
-          setSecretRevealed(s=>new Set([...s,"secret_1"]));
-          addCLog("🚪 A hidden passage reveals itself!");
-        } else if(actionType==="teleport"){
-          setTeleportsActive(t=>new Set([...t,enc.room]));
-          addCLog("🌀 A teleport circle activates!");
-        } else if(actionType==="fire_clear"){
-          setFireCleared(f=>new Set([...f,enc.room]));
-          addCLog("❄ The flames gutter and die!");
-        } else if(actionType==="shelter"){
-          addCLog("🛖 Rested.");
-        }
-        setEncounters(es=>es.filter(e=>!(e.cx===enc.cx&&e.cy===enc.cy)));
-      } else {
-        setEncounters(es=>es.filter(e=>e.room!==enc.room));
-      }
-    }
-    setEncModal(null);
-  };
-
-  return(
-    <div style={{position:"fixed",inset:0,background:"#0d0a06",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:50}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:CASTLE_CANVAS+"px",marginBottom:6}}>
-        <div style={{color:"#9b59b6",fontSize:13,fontFamily:"serif"}}>🏰 Castle — Level {levelIdx+1}</div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <span style={{fontSize:11,color:C.dim}}>HP: <span style={{color:heroState.health>60?"#6fcf97":heroState.health>25?"#c9a02b":"#c0392b"}}>{heroState.health||0}%</span></span>
-          {heroKeys.map((k,i)=><span key={i} style={{fontSize:14,color:KEY_COLORS_C[k]||"#fff"}}>🗝</span>)}
-        </div>
-        <button style={{padding:"4px 12px",background:"transparent",border:"1px solid #7a6a4a",color:"#7a6a4a",cursor:"pointer",fontSize:10,borderRadius:3}} onClick={onExit}>⬆ Exit Castle</button>
-      </div>
-      <canvas ref={canvasRef} width={CASTLE_CANVAS} height={CASTLE_CANVAS}
-        style={{cursor:"pointer",border:"1px solid #3d2f18",display:"block"}}
-        onClick={handleClick}/>
-      <div style={{marginTop:6,color:C.dim,fontSize:10,maxWidth:CASTLE_CANVAS+"px"}}>{log[0]||"Explore the castle..."}</div>
-
-      {encModal&&<NpcModalCastle enc={encModal.enc} heroState={heroState} setHeroState={setHeroState}
-        C={C} addLog={addCLog} setDefeatedRooms={setDefeatedRooms}
-        onDismiss={(remove,actionType)=>dismissEnc(remove,actionType)}/>}
-
-      {combatModal&&<CombatScreen
-        monster={combatModal.monster}
-        heroState={heroState} setHeroState={setHeroState}
-        isDragon={combatModal.monster.isDragon}
-        addLog={addCLog}
-        onVictory={(mon)=>{
-          setEncounters(es=>es.filter(e=>e.room!==combatModal.monster.room));
-          addCLog(`⚔ ${combatModal.monster.name} defeated!`);
-          if(mon.isDragon){setCombatModal(null);onWin&&onWin();}
-          else setCombatModal(null);
-        }}
-        onDefeat={()=>{setCombatModal(null);addLog("💀 You fell in the castle...");setHeroState(h=>({...h,health:0}));}}
-        onFlee={()=>{
-          heroPosRef.current=combatModal.fromPos;
-          setHeroPos(combatModal.fromPos);
-          pathRef.current=[];setTarget(null);
-          const ek=combatModal.monster.room;
-          setDefeatedRooms(dr=>{const nd=new Set(dr);nd.delete(ek+"_triggered");return nd;});
-          setCombatModal(null);
-        }}
-      />}
-    </div>
-  );
-}
-
 export default function Game(){
   const [heroState,setHeroState]=useState({...INIT_HERO});
   const [defeatedGuardians,setDefeatedGuardians]=useState(new Set());
@@ -2620,7 +2140,7 @@ export default function Game(){
   const [keyOpen,setKeyOpen]=useState(false);
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
-    const [groundItems,setGroundItems]=useState({
+  const [groundItems,setGroundItems]=useState({
     "32,30": [{...magicItem("fire","potion","fire_pot_g"),uid:"fire_pot_g"}, {...gold(49),uid:"gold_32_30"}],
     "69,58": [{...magicItem("fire","potion","fire_pot_g2"),uid:"fire_pot_g2"}, {...gold(33),uid:"gold_69_58"}],
     "145,20": [{...magicItem("fire","potion","fire_pot_g3"),uid:"fire_pot_g3"}, {...gold(46),uid:"gold_145_20"}],
@@ -2965,6 +2485,16 @@ export default function Game(){
 
   const stopAt=(nx,ny)=>{heroPosRef.current={x:nx,y:ny};setHeroPos({x:nx,y:ny});pathRef.current=[];setTarget(null);};
 
+  // Silently snapshots island state to a hidden save slot (not shown in the
+  // Tavern's Load Game list) so it can be restored after a castle visit.
+  const saveHiddenState=async()=>{
+    try{
+      const saveData={heroState,heroPos,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},hasMap,timestamp:Date.now()};
+      const cs=computeChecksum(saveData);
+      await storageSet(HIDDEN_SAVE_KEY,JSON.stringify({...saveData,checksum:cs}));
+    }catch(e){console.error("Hidden save error:",e);}
+  };
+
   const walkPath=useCallback(()=>{
     if(pathRef.current.length===0){setTarget(null);return;}
     const[nx,ny]=pathRef.current.shift();
@@ -3104,7 +2634,7 @@ export default function Game(){
       </div>
       {/* MODALS */}
       {modal?.type==="building"&&modal.data.type==="tavern"&&
-        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} defeatedGuardians={defeatedGuardians} setDefeatedGuardians={(s)=>{setDefeatedGuardians(s);defeatedGuardiansRef.current=s;}} defeatedTournament={defeatedTournament} setDefeatedTournament={(s)=>{setDefeatedTournament(s);defeatedTournamentRef.current=s;}} hasMap={hasMap} setHasMap={setHasMap} groundItems={groundItems} setGroundItems={setGroundItems} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
+        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} defeatedGuardians={defeatedGuardians} setDefeatedGuardians={(s)=>{setDefeatedGuardians(s);defeatedGuardiansRef.current=s;}} defeatedTournament={defeatedTournament} setDefeatedTournament={(s)=>{setDefeatedTournament(s);defeatedTournamentRef.current=s;}} hasMap={hasMap} setHasMap={setHasMap} groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos} teleportHero={stopAt} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
       {modal?.type==="building"&&modal.data.type==="armourer"&&
         <ArmourerDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} onDismiss={()=>{setModal(null);addLog(`You leave ${modal.data.name}.`);}}/>}
       {modal?.type==="building"&&modal.data.type==="arena"&&
@@ -3114,7 +2644,7 @@ export default function Game(){
       {modal?.type==="building"&&modal.data.type==="castle"&&
         <CastleDialogue heroState={heroState}
           onDismiss={()=>{setModal(null);addLog("The guard glares at you as you leave.");}}
-          onEnter={()=>{setModal(null);setGameState("castle");addLog("You enter the castle!");}}
+          onEnter={()=>{setModal(null);saveHiddenState();setGameState("castle");addLog("You enter the castle!");}}
           onWin={()=>{setModal(null);setGameState("win");}}/>}
       {modal?.type==="guardian"&&
         <GuardianEncounter guardian={modal.data} setHeroState={setHeroState}

@@ -122,6 +122,7 @@ def generate(seed):
     # ── Step 3: Connect rooms with corridors ───────────────────────
     doors    = set()
     corridor = set()
+    corridor_paths = []  # each entry: ordered list of (x,y) cells for one corridor run
 
     def adj_to_door(c):
         x, y = c
@@ -204,6 +205,7 @@ def generate(seed):
             if path is None: continue
             doors.add(d1); doors.add(d2)
             for c in path: corridor.add(c)
+            corridor_paths.append([d1] + path + [d2])
             return True
         return False
 
@@ -265,6 +267,7 @@ def generate(seed):
     if adj_to_door(edoor): return None
     for (x, y) in cells: grid[y][x] = True
     doors.add(edoor)
+    corridor_paths.append(list(cells))  # entrance corridor, ordered boundary → room
 
     # Re-validate ring rule after adding entrance
     for (x, y) in room_cells:
@@ -355,13 +358,19 @@ def generate(seed):
         for i, (rx, ry, rw, rh) in enumerate(rooms)
     ]
 
+    corridors_data = [
+        {"id": f"corridor_{i}", "cells": [list(c) for c in path]}
+        for i, path in enumerate(corridor_paths)
+    ]
+
     return {
-        "map":    compact,
-        "start":  list(entrance),
-        "stairs": list(stairs),
-        "doors":  final_doors,
-        "keys":   keys,
-        "rooms":  rooms_data,
+        "map":       compact,
+        "start":     list(entrance),
+        "stairs":    list(stairs),
+        "doors":     final_doors,
+        "keys":      keys,
+        "rooms":     rooms_data,
+        "corridors": corridors_data,
         "stats": {
             "rooms":    len(rooms),
             "doors":    len(final_doors),
@@ -405,6 +414,7 @@ lines = [
     f"export const START = {{x:{result['start'][0]},y:{result['start'][1]}}};",
     f"export const STAIRS = {{x:{result['stairs'][0]},y:{result['stairs'][1]}}};",
     f"export const ROOMS_DATA = {js_val(result['rooms'])};",
+    f"export const CORRIDORS_DATA = {js_val(result['corridors'])};",
     f"export const DOORS_INIT = {js_val(result['doors'])};",
     f"export const KEYS_INIT  = {js_val(result['keys'])};",
     'export const KEY_COLORS = {"red":"#e74c3c","blue":"#3498db","green":"#2ecc71",'
