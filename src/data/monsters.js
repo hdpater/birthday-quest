@@ -25,8 +25,8 @@ export const TOURNAMENT_FIGHTERS = [
    dialogue:"I feel like we have met before. Well, I'll make this quick then.",
    poisonDagger:true,
    loot:[
-     {name:"Greegan's Boots",slot:"feet",armourBonus:3,sklBonus:5,type:"armour",uid:"greegan_boots"},
-     {name:"Poison Dagger",slot:"right",strBonus:3,type:"weapon",poisonOnHit:true,uid:"greegan_dagger"},
+     {name:"Greegan's Boots",slot:"feet",armourBonus:3,sklBonus:10,type:"armour",uid:"greegan_boots"},
+     {name:"Poison Dagger",slot:"either",strBonus:6,type:"weapon",poisonOnHit:true,uid:"greegan_dagger"},
    ]},
 ];
 export const DRAGON_POS = {x:219,y:243};

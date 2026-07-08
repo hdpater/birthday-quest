@@ -1,19 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Game from './Game.jsx'
 import IntroScreen from './IntroScreen.jsx'
-
-const GAME_PART_KEY = 'game_part'
+import { SAVES_KEY, storageGet } from './data/storage.js'
 
 export default function App(){
-  const [gamePart, setGamePart] = useState(() => {
-    try { return localStorage.getItem(GAME_PART_KEY) } catch { return null }
-  })
+  // null while checking, then 'main' (skip intro) or 'intro' (show it).
+  const [gamePart, setGamePart] = useState(null)
 
-  const beginMain = () => {
-    try { localStorage.setItem(GAME_PART_KEY, 'main') } catch {}
-    setGamePart('main')
-  }
+  useEffect(() => {
+    let cancelled = false
+    storageGet(SAVES_KEY).then(raw => {
+      if (cancelled) return
+      let hasSave = false
+      try {
+        const list = raw ? JSON.parse(raw) : []
+        hasSave = Array.isArray(list) && list.length > 0
+      } catch {}
+      setGamePart(hasSave ? 'main' : 'intro')
+    })
+    return () => { cancelled = true }
+  }, [])
 
-  if (!gamePart) return <IntroScreen onContinue={beginMain}/>
+  const beginMain = () => setGamePart('main')
+
+  if (gamePart === null) return null
+  if (gamePart === 'intro') return <IntroScreen onContinue={beginMain}/>
   return <Game/>
 }

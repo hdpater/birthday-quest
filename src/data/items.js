@@ -10,7 +10,7 @@ export const WEAPONS = [
   {id:"greataxe",   name:"Great Axe",    slot:"both",  strBonus:9, cost:1200,  twoHanded:true,  tier:5},
 ];
 export const ARMOUR_ITEMS = [
-    {id:"cheat",    name:"Cheat's Armour", slot:"body", strBonus:100, sklBonus:100,       armourBonus:100,  cost:8,    tier:1},
+    //{id:"cheat",    name:"Cheat's Armour", slot:"body", strBonus:100, sklBonus:100,       armourBonus:100,  cost:8,    tier:1},
   {id:"leather",    name:"Leather Armour", slot:"body",        armourBonus:2,  cost:50,   tier:1},
   {id:"chainmail",  name:"Chainmail",      slot:"body",        armourBonus:5,  cost:320,  tier:2},
   {id:"plate",      name:"Plate Armour",   slot:"body",        armourBonus:8,  cost:1200, tier:3},

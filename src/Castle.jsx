@@ -1,7 +1,9 @@
 import React from "react";
-import { CombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX } from "./Game.jsx";
+import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX } from "./Game.jsx";
 import { NPC_IMG } from "./data/images.js";
 import { CASTLE_LEVELS } from "./data/castleLevels.js";
+import StealthGame from "./StealthGame.tsx";
+import NinjaDummy from "./NinjaDummy artifact.tsx";
 
 // 2x2 grid, same cropping approach as the island's GuardianPortrait.
 function NpcPortrait({col,row,size=130}){
@@ -12,7 +14,10 @@ function NpcPortrait({col,row,size=130}){
 // at its original 64-unit resolution; SCALE blows every room/corridor/door/
 // position up at load time via scaleLevel() below.
 const SCALE = 4;
-const RAW_SIZE = 64;
+// 112 rather than 64 — room_27 (teleporter destination, level 2) sits at
+// raw (100,100), deliberately far from the rest of the map since it's only
+// ever reached via teleporter, not a corridor.
+const RAW_SIZE = 112;
 const CASTLE_SIZE = RAW_SIZE * SCALE;
 const CASTLE_VIEW = 51;
 const CASTLE_HALF = (CASTLE_VIEW - 1) / 2;
@@ -79,7 +84,19 @@ function scaleLevel(raw) {
     start: [raw.start[0]*SCALE, raw.start[1]*SCALE],
     stairs: [raw.stairs[0]*SCALE, raw.stairs[1]*SCALE],
     keys: raw.keys.map(k => ({...k, x:k.x*SCALE, y:k.y*SCALE})),
-    encounters: raw.encounters.map(e => ({...e, cx:e.cx*SCALE, cy:e.cy*SCALE})),
+    // "fire" encounters are unpassable hazard blocks, not point encounters —
+    // {x,y} names the raw cell, expanded here into the full SCALE x SCALE
+    // block of scaled cells it occupies (matching how rooms/corridors blow
+    // up a raw cell into an SCALE-wide block). Cleared via the fire_clear
+    // NPC action (see dismissEnc), tracked per-room in fireCleared.
+    encounters: raw.encounters.map(e => {
+      if (e.type === "fire") {
+        const cells = [];
+        for (let dy = 0; dy < SCALE; dy++) for (let dx = 0; dx < SCALE; dx++) cells.push([e.x*SCALE+dx, e.y*SCALE+dy]);
+        return {...e, cells};
+      }
+      return {...e, cx:e.cx*SCALE, cy:e.cy*SCALE};
+    }),
     // corner picks where in the raw cell's SCALE x SCALE block the torch
     // sits: "ul" (default) top-left, "ur" top-right, "dl" bottom-left,
     // "dr" bottom-right. radius scales the torch's illumination reach
@@ -89,6 +106,11 @@ function scaleLevel(raw) {
       const ty = (corner==="dl"||corner==="dr") ? y*SCALE+SCALE-1 : y*SCALE;
       return [tx, ty, radius];
     }),
+    teleporters: (raw.teleporters||[]).map(t => ({
+      ...t,
+      a:{x:t.a.x*SCALE, y:t.a.y*SCALE},
+      b:{x:t.b.x*SCALE, y:t.b.y*SCALE},
+    })),
   };
 }
 
@@ -99,13 +121,22 @@ function castlePassable(passableSet, x, y) {
   return x>=0&&y>=0&&x<CASTLE_SIZE&&y<CASTLE_SIZE&&passableSet.has(`${x},${y}`);
 }
 
-function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,onDismiss}){
+function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,saves,saveMsg,onSaveGame,onLoadGame,onDeleteSave,hasIceCrystal,onLaunchStealth,hasBlackBelt,onLaunchNinja,onDismiss}){
   const [paid,setPaid]=React.useState(false);
   const action=enc.action||{};
   const inv=heroState.inventory||[];
-  const hasItem=action.wantsId?inv.some(i=>i.id===action.wantsId||i.uid===action.wantsId):true;
+  // Neither the Ice Crystal nor the Black Belt is a real inventory item —
+  // they're one-off flags (see iceCrystal/blackBelt in CastleLevel) awarded
+  // by winning their respective mini-games, so these two wantsIds check
+  // those flags instead of the inventory.
+  const isIceCrystalGate=action.wantsId==="ice_crystal";
+  const isBlackBeltGate=action.wantsId==="black_belt";
+  const hasItem=action.wantsId?(isIceCrystalGate?hasIceCrystal:isBlackBeltGate?hasBlackBelt:inv.some(i=>i.id===action.wantsId||i.uid===action.wantsId)):true;
   const isShelter=action.type==="shelter";
-  const canAct=!paid&&(isShelter||(action.wantsId?hasItem:true));
+  // Always clickable for the ice-crystal/black-belt gates — the handler
+  // below decides whether that click launches a mini-game or does the
+  // normal trade.
+  const canAct=!paid&&(isShelter||isIceCrystalGate||isBlackBeltGate||(action.wantsId?hasItem:true));
   const outerStyle={position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200};
   const innerStyle={background:C.panel,border:"2px solid "+C.border,borderRadius:10,padding:20,maxWidth:360,width:"90%",color:C.text};
   const btnStyle=(col,dis)=>({padding:"8px 16px",background:"transparent",border:"1.5px solid "+(dis?"#333":col),color:dis?"#444":col,cursor:dis?"not-allowed":"pointer",borderRadius:3,fontSize:12});
@@ -123,17 +154,54 @@ function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,on
       </div>
       {action.wants&&!isShelter&&<div style={{fontSize:11,color:C.dim,marginBottom:10}}>
         Requires: <span style={{color:C.gold}}>{action.wants}</span>
-        {hasItem&&<span style={{color:"#6fcf97",marginLeft:8}}>✓ in inventory</span>}
+        {hasItem&&<span style={{color:"#6fcf97",marginLeft:8}}>✓ {(isIceCrystalGate||isBlackBeltGate)?"obtained":"in inventory"}</span>}
       </div>}
       {!isShelter&&<div style={{fontSize:11,color:"#6a9a8a",marginBottom:14}}>
         Reward: {action.type==="secret_door"?"🚪 Secret passage":
                  action.type==="teleport"?"🌀 Teleport activated":
                  action.type==="fire_clear"?"❄ Fire cleared":"?"}
       </div>}
+      {isShelter&&<div style={{marginBottom:14}}>
+        <button style={{...btnStyle(C.gold,false),width:"100%"}} onClick={onSaveGame}>
+          💾 Save Game
+        </button>
+        {saveMsg&&<div style={{marginTop:8,textAlign:"center",fontSize:11,
+          color:saveMsg.startsWith("✓")?"#6fcf97":saveMsg.startsWith("✗")?C.red:C.dim,
+          padding:"6px",background:"#0d0a06",borderRadius:4,border:"1px solid "+C.border}}>
+          {saveMsg}
+        </div>}
+        <div style={{marginTop:10,color:C.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>
+          Load Game ({(saves||[]).length}/3)
+        </div>
+        {(saves||[]).length===0
+          ? <div style={{fontSize:10,color:C.dim,fontStyle:"italic",textAlign:"center",padding:"6px 0"}}>No saved games found.</div>
+          : [...saves].sort((a,b)=>b.timestamp-a.timestamp).map(entry=>(
+              <div key={entry.timestamp} style={{display:"flex",gap:6,marginBottom:6}}>
+                <button style={{...btnStyle(C.blue,false),flex:1,textAlign:"left"}}
+                  onClick={()=>onLoadGame(entry)}>
+                  📂 {new Date(entry.timestamp).toLocaleString()}
+                </button>
+                <button title="Delete save" style={{...btnStyle(C.red,false),flexShrink:0}}
+                  onClick={()=>onDeleteSave&&onDeleteSave(entry)}>
+                  ✕
+                </button>
+              </div>
+            ))}
+      </div>}
       <div style={{display:"flex",gap:8}}>
         <button style={{...btnStyle(isShelter?"#2d8a4e":C.gold,!canAct),flex:1}}
           onClick={()=>{
             if(!canAct)return;
+            if(isIceCrystalGate&&!hasIceCrystal){
+              setPaid(true);
+              onLaunchStealth();
+              return;
+            }
+            if(isBlackBeltGate&&!hasBlackBelt){
+              setPaid(true);
+              onLaunchNinja();
+              return;
+            }
             setPaid(true);
             if(isShelter){
               setHeroState(h=>({...h,health:100}));
@@ -146,7 +214,10 @@ function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,on
               onDismiss(true,action.type);
             }
           }}>
-          {isShelter?"Sleep (restore HP)":(action.wantsId&&!hasItem?"Need: "+action.wants:"Help me")}
+          {isShelter?"Sleep (restore HP)":
+            isIceCrystalGate&&!hasIceCrystal?"Steal the Ice Crystal":
+            isBlackBeltGate&&!hasBlackBelt?"Enter the Dojo":
+            (action.wantsId&&!hasItem?"Need: "+action.wants:"Help me")}
         </button>
         <button style={{...btnStyle(C.dim,false),flex:1}}
           onClick={()=>{clearTrigger();onDismiss(false);}}>
@@ -158,30 +229,34 @@ function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,on
 }
 
 
-export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}){
+export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,initialState,onSaveGame,onLoadGame,onDeleteSave,saves,saveMsg}){
   const canvasRef=React.useRef(null);
-  const [levelIdx,setLevelIdx]=React.useState(0);
+  // initialState (from a loaded save's castleState) seeds every piece of
+  // castle progress below instead of the fresh-entry defaults — levelIdx
+  // must be seeded first since `level` and several other initializers
+  // depend on it.
+  const [levelIdx,setLevelIdx]=React.useState(()=>initialState?.levelIdx ?? 0);
   const level=React.useMemo(()=>scaleLevel(CASTLE_LEVELS[levelIdx]),[levelIdx]);
   const [keyOpen,setKeyOpen]=React.useState(false);
 
-  const [heroPos,setHeroPos]=React.useState({x:level.start[0],y:level.start[1]});
-  const heroPosRef=React.useRef({x:level.start[0],y:level.start[1]});
+  const [heroPos,setHeroPos]=React.useState(()=>initialState?.heroPos ?? {x:level.start[0],y:level.start[1]});
+  const heroPosRef=React.useRef(initialState?.heroPos ?? {x:level.start[0],y:level.start[1]});
   // Barrier model (matches StealthGame): barrierDefs are static per-level door
   // definitions; closedBarriers is the Set of ids still blocking passage —
   // removing an id from the set opens that door.
-  const [closedBarriers,setClosedBarriers]=React.useState(()=>new Set(level.barrierDefs.map(d=>d.id)));
+  const [closedBarriers,setClosedBarriers]=React.useState(()=>new Set(initialState?.closedBarriers ?? level.barrierDefs.map(d=>d.id)));
   const closedBarriersRef=React.useRef(closedBarriers);
   React.useEffect(()=>{closedBarriersRef.current=closedBarriers;},[closedBarriers]);
-  const [heroKeys,setHeroKeys]=React.useState([]);
-  const heroKeysRef=React.useRef([]);
+  const [heroKeys,setHeroKeys]=React.useState(()=>initialState?.heroKeys ?? []);
+  const heroKeysRef=React.useRef(initialState?.heroKeys ?? []);
   React.useEffect(()=>{heroKeysRef.current=heroKeys;},[heroKeys]);
-  const [groundKeys,setGroundKeys]=React.useState(level.keys);
-  const [groundItems,setGroundItems]=React.useState(()=>({...level.groundItemsInit}));
+  const [groundKeys,setGroundKeys]=React.useState(()=>initialState?.groundKeys ?? level.keys);
+  const [groundItems,setGroundItems]=React.useState(()=>initialState?.groundItems ?? {...level.groundItemsInit});
   const [groundModal,setGroundModal]=React.useState(null);
-  const [encounters,setEncounters]=React.useState(level.encounters);
+  const [encounters,setEncounters]=React.useState(()=>initialState?.encounters ?? level.encounters);
   const encRef=React.useRef(encounters);
   React.useEffect(()=>{encRef.current=encounters;},[encounters]);
-  const [defeatedRooms,setDefeatedRooms]=React.useState(new Set());
+  const [defeatedRooms,setDefeatedRooms]=React.useState(()=>new Set(initialState?.defeatedRooms ?? []));
   const [encModal,setEncModal]=React.useState(null);
   const [target,setTarget]=React.useState(null);
   const pathRef=React.useRef([]);
@@ -192,28 +267,65 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
   const shownGroundKeyRef=React.useRef(null);
   // Same idea, for monster/NPC encounter triggering.
   const shownEncounterKeyRef=React.useRef(null);
-  const lastCorridorRef=React.useRef({x:level.start[0],y:level.start[1]});
+  const lastCorridorRef=React.useRef(initialState?.heroPos ?? {x:level.start[0],y:level.start[1]});
   const [msg,setMsg]=React.useState(null);
   const [log,setLog]=React.useState([]);
   const addCLog=m=>{addLog(m);setLog(p=>[m,...p].slice(0,15));};
-  
+
   // Secret doors, teleporters, fire state
-  const [secretRevealed,setSecretRevealed]=React.useState(new Set());
-  const [teleportsActive,setTeleportsActive]=React.useState(new Set());
-  const [fireCleared,setFireCleared]=React.useState(new Set());  // set of room ids with fire cleared
+  const [secretRevealed,setSecretRevealed]=React.useState(()=>new Set(initialState?.secretRevealed ?? []));
+  const [teleportsActive,setTeleportsActive]=React.useState(()=>new Set(initialState?.teleportsActive ?? []));
+  const [fireCleared,setFireCleared]=React.useState(()=>new Set(initialState?.fireCleared ?? []));  // set of room ids with fire cleared
   const [combatModal,setCombatModal]=React.useState(null);
+  const [multiCombatModal,setMultiCombatModal]=React.useState(null);
+  // One-off castle-wide reward, awarded by winning the Stealth mini-game
+  // (see Red's NPC entry, room_13/level 1) — displayed as a header icon like
+  // heroKeys, not added to heroState.inventory. Not per-level, so goToLevel
+  // never resets it.
+  const [iceCrystal,setIceCrystal]=React.useState(()=>initialState?.iceCrystal ?? false);
+  const [playingStealth,setPlayingStealth]=React.useState(false);
+  // Same one-off header-icon pattern, awarded by winning the Ninja Dummy
+  // mini-game (see the Acolyte's NPC entry, room_13/level 2).
+  const [blackBelt,setBlackBelt]=React.useState(()=>initialState?.blackBelt ?? false);
+  const [playingNinja,setPlayingNinja]=React.useState(false);
 
   const C={bg:"#0d0a06",panel:"#1a1510",border:"#3d2f18",gold:"#c9a84c",text:"#e8dcc8",dim:"#7a6a4a",red:"#c0392b",green:"#2d8a4e",blue:"#2e6da4"};
 
-  // Switch level
-  const goToLevel=(idx)=>{
+  // Gathers current castle progress for saving — mirrors the shape
+  // `initialState` seeds the useStates above from. Sets aren't JSON-
+  // serializable, so they're converted to arrays here.
+  const buildCastleSnapshot=()=>({
+    levelIdx,
+    heroPos,
+    closedBarriers:[...closedBarriers],
+    heroKeys,
+    groundKeys,
+    groundItems,
+    encounters,
+    defeatedRooms:[...defeatedRooms],
+    secretRevealed:[...secretRevealed],
+    teleportsActive:[...teleportsActive],
+    fireCleared:[...fireCleared],
+    iceCrystal,
+    blackBelt,
+  });
+
+  // Switch level. viaStairs spawns the hero at the target level's `stairs`
+  // position instead of its `start` — used when ascending back from level 2
+  // via its start square, so the hero lands where level 1's down-stairs are,
+  // not back at level 1's own entrance.
+  const goToLevel=(idx,{viaStairs}={})=>{
     const lv=scaleLevel(CASTLE_LEVELS[idx]);
+    const spawn=viaStairs?{x:lv.stairs[0],y:lv.stairs[1]}:{x:lv.start[0],y:lv.start[1]};
     setLevelIdx(idx);
-    setHeroPos({x:lv.start[0],y:lv.start[1]});
-    heroPosRef.current={x:lv.start[0],y:lv.start[1]};
+    setHeroPos(spawn);
+    heroPosRef.current=spawn;
     setClosedBarriers(new Set(lv.barrierDefs.map(d=>d.id)));
     closedBarriersRef.current=new Set(lv.barrierDefs.map(d=>d.id));
-    setHeroKeys([]);heroKeysRef.current=[];
+    // heroKeys is NOT reset here — keys are tagged with the level they were
+    // found on (see pickup below) and only unlock doors on that same level,
+    // so carrying them across a level transition is harmless and lets the
+    // hero keep level 2 keys when popping back up to level 1 via the stairs.
     setGroundKeys(lv.keys);
     setGroundItems({...lv.groundItemsInit});
     setEncounters(lv.encounters);
@@ -243,7 +355,27 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
     return set;
   },[level]);
 
-  const isPassable=(x,y)=>castlePassable(passableSet,x,y);
+  // Corridors leading up to an unrevealed secret door (see barrierDefs'
+  // optional secretCorridorId) stay fully disguised too — otherwise a
+  // corridor that dead-ends at a wall gives the secret away on sight, even
+  // though the door cell itself is already hidden. Once the door's id is in
+  // secretRevealed, its corridor is excluded here and behaves normally.
+  const hiddenCorridorCells=React.useMemo(()=>{
+    const set=new Set();
+    for(const d of level.barrierDefs){
+      if(!d.isSecret||!d.secretCorridorId||secretRevealed.has(d.id))continue;
+      const c=level.corridors.find(c=>c.id===d.secretCorridorId);
+      if(!c)continue;
+      for(const[bx,by]of c.cells){
+        for(let y=by;y<by+SCALE;y++)
+          for(let x=bx;x<bx+SCALE;x++)
+            set.add(`${x},${y}`);
+      }
+    }
+    return set;
+  },[level,secretRevealed]);
+
+  const isPassable=(x,y)=>castlePassable(passableSet,x,y)&&!hiddenCorridorCells.has(`${x},${y}`);
 
   const doorAt=(x,y,doorList,inclSecret)=>{
     for(const d of doorList){
@@ -257,8 +389,9 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
   const isFire=(x,y)=>{
     const room=rooms.find(r=>x>=r.rx&&x<r.rx+r.rw&&y>=r.ry&&y<r.ry+r.rh);
     if(!room||fireCleared.has(room.id))return false;
-    const enc=encRef.current.find(e=>e.type==="fire"&&e.room===room.id);
-    return enc&&enc.cells&&enc.cells.some(c=>c[0]===x&&c[1]===y);
+    // A room can have several "fire" entries (one per raw cell filled with
+    // fire) — check all of them, not just the first found.
+    return encRef.current.some(e=>e.type==="fire"&&e.room===room.id&&e.cells&&e.cells.some(c=>c[0]===x&&c[1]===y));
   };
 
   const canPass=(x,y,doorList,keyList,closedSet)=>{
@@ -267,7 +400,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
     const d=doorAt(x,y,doorList);
     if(d&&closedSet.has(d.id)){
       if(d.isSecret&&!secretRevealed.has(d.id))return false;
-      if(d.locked)return keyList.some(k=>k===d.locked);
+      if(d.locked)return keyList.some(k=>k.keyType===d.locked&&k.level===levelIdx);
     }
     return true;
   };
@@ -292,7 +425,16 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
         vis.set(k,`${x},${y}`);
         if(nx===tx&&ny===ty){
           const path=[];let c=k;
-          while(c){const[px,py]=c.split(",").map(Number);path.unshift({x:px,y:py});c=vis.get(c);}
+          const startKey=`${sx},${sy}`;
+          // Stop before the start cell itself (matches the island's
+          // computePath) — otherwise the returned path's first "step" is
+          // just the hero's current tile, a harmless no-op for most walk-
+          // step checks (they're debounced against re-processing the same
+          // tile) but not for one-shot triggers like the stairs: landing
+          // exactly on a stairs tile, then clicking anywhere else, would
+          // immediately re-trigger that tile's transition before the hero
+          // ever moves.
+          while(c&&c!==startKey){const[px,py]=c.split(",").map(Number);path.unshift({x:px,y:py});c=vis.get(c);}
           return path;
         }
         q.push([nx,ny]);
@@ -416,7 +558,12 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
         const isHeroVis=vis.has(cellKey);
         const torchDist=torchLitMap.has(cellKey)?torchLitMap.get(cellKey):null;
         const isVis=isHeroVis||torchDist!==null;
-        const isWall=!isPassable(wx,wy);
+        const doorHere=doorAt(wx,wy,doorList);
+        // An unrevealed secret door renders exactly like solid wall — no
+        // grey giveaway square — and is treated as a wall for the fog-dim
+        // pass below too, until secretRevealed picks it up.
+        const hiddenSecretDoor=doorHere&&doorHere.isSecret&&!secretRevealed.has(doorHere.id);
+        const isWall=!isPassable(wx,wy)||hiddenSecretDoor;
 
         if(isWall){
           // Wall — lit only by the hero's own presence, never by torches, so
@@ -448,25 +595,23 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
             ctx.fillStyle=`rgb(${Math.min(255,Math.max(0,nr))},${Math.min(255,Math.max(0,ng))},${Math.min(255,Math.max(0,nb))})`;
             ctx.fillRect(px,py,S,S);
           }
-          // Door
-          const door=doorAt(wx,wy,doorList);
+          // Door — hiddenSecretDoor took the wall branch above instead, so
+          // by the time we're here it's either not secret or already
+          // revealed, and renders as a normal door either way.
+          const door=doorHere;
           if(door){
-            const isSecret=door.isSecret&&!secretRevealed.has(door.id);
             const isOpen=!closedSet.has(door.id);
-            if(isSecret){ctx.fillStyle="#555";ctx.fillRect(px,py,S,S);}
-            else{
-              const locked=door.locked&&!isOpen;
-              ctx.fillStyle=locked?(KEY_COLORS_C[door.locked]||"#8b6914"):(isOpen?"#5a4a30":"#8b6914");
-              ctx.fillRect(px,py,S,S);
-              if(locked){
-                // Door rect spans multiple cells now — draw the lock icon
-                // once, at the rect's centre cell, not on every sub-cell.
-                const r=door.rect;
-                const ccx=Math.floor((r.x0+r.x1-1)/2),ccy=Math.floor((r.y0+r.y1-1)/2);
-                if(wx===ccx&&wy===ccy){
-                  ctx.font=`${Math.round(S*0.35)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
-                  ctx.fillText("🔒",px+S/2,py+S/2);
-                }
+            const locked=door.locked&&!isOpen;
+            ctx.fillStyle=locked?(KEY_COLORS_C[door.locked]||"#8b6914"):(isOpen?"#5a4a30":"#8b6914");
+            ctx.fillRect(px,py,S,S);
+            if(locked){
+              // Door rect spans multiple cells now — draw the lock icon
+              // once, at the rect's centre cell, not on every sub-cell.
+              const r=door.rect;
+              const ccx=Math.floor((r.x0+r.x1-1)/2),ccy=Math.floor((r.y0+r.y1-1)/2);
+              if(wx===ccx&&wy===ccy){
+                ctx.font=`${Math.round(S*0.35)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+                ctx.fillText("🔒",px+S/2,py+S/2);
               }
             }
           }
@@ -476,11 +621,11 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
             ctx.font=`${Math.round(S*0.55)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
             ctx.fillText("📦",px+S/2,py+S/2);
           }
-          // Encounters
+          // Encounters — NPCs are drawn oversized in their own pass below
+          // (like keys/torches), so skip them here.
           const enc=(encs||[]).find(e=>e.cx===wx&&e.cy===wy);
-          if(enc){
+          if(enc&&enc.type!=="npc"){
             const icon=enc.type==="monster"?"👾":enc.type==="dragon_boss"?"🐉":
-              enc.type==="npc"?{shelter:"🛖",secret_door:"🚪",teleport:"🌀",fire_clear:"❄"}[enc.action?.type]||"🧙":
               enc.type==="items"?"📦":"?";
             ctx.font=`${Math.round(S*0.65)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
             ctx.fillText(icon,px+S/2,py+S/2+1);
@@ -490,9 +635,23 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
             ctx.font=`${Math.round(S*0.6)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
             ctx.fillText(levelIdx===0?"🪜":"🐉",px+S/2,py+S/2+1);
           }
-          // Entrance
+          // Entrance — on level 2, the start square doubles as an
+          // up-staircase back to level 1.
           if(wx===lv.start[0]&&wy===lv.start[1]){
             ctx.fillStyle="#c9a84c44";ctx.fillRect(px,py,S,S);
+            if(levelIdx===1){
+              ctx.font=`${Math.round(S*0.6)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+              ctx.fillText("🪜",px+S/2,py+S/2+1);
+            }
+          }
+          // Teleporter pads — invisible until teleportsActive has the
+          // gating room (see dismissEnc's "teleport" action).
+          for(const t of (lv.teleporters||[])){
+            if(!teleportsActive.has(t.gateRoom))continue;
+            if((wx===t.a.x&&wy===t.a.y)||(wx===t.b.x&&wy===t.b.y)){
+              ctx.font=`${Math.round(S*0.6)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+              ctx.fillText("🌀",px+S/2,py+S/2+1);
+            }
           }
         }
         // Fog of war dim — soft fade near the edge of the highlight radius
@@ -528,6 +687,38 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
       ctx.fillStyle=KEY_COLORS_C[gk.keyType]||"#fff";
       ctx.font=`${Math.round(CASTLE_CELL*3*0.8)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillText("🗝",kpx+CASTLE_CELL/2,kpy+CASTLE_CELL/2);
+    }
+    // NPCs — drawn oversized (3x3 cells), same pattern as keys above. Always
+    // the same wizard icon regardless of what they offer — it should read
+    // as "a person is here", not advertise the reward in advance.
+    for(const enc of (encs||[])){
+      if(enc.type!=="npc")continue;
+      const cellKey=`${enc.cx},${enc.cy}`;
+      if(!vis.has(cellKey)&&!exploredRef.current.has(cellKey))continue;
+      const evx=enc.cx-hx+CASTLE_HALF,evy=enc.cy-hy+CASTLE_HALF;
+      if(evx<0||evy<0||evx>=CASTLE_VIEW||evy>=CASTLE_VIEW)continue;
+      const epx=evx*CASTLE_CELL,epy=evy*CASTLE_CELL;
+      ctx.font=`${Math.round(CASTLE_CELL*3*0.8)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText("🧙",epx+CASTLE_CELL/2,epy+CASTLE_CELL/2);
+    }
+    // Fire — unpassable hazard, visually like a torch (see below) but scaled
+    // up to fill the whole SCALE x SCALE block it blocks, instead of a
+    // single cell. Cleared via the fire_clear NPC action (see dismissEnc),
+    // tracked per-room in fireCleared — once cleared it stops rendering
+    // here and canPass() stops blocking it (see isFire).
+    for(const enc of (encs||[])){
+      if(enc.type!=="fire"||fireCleared.has(enc.room))continue;
+      const [fx,fy]=enc.cells[0];
+      const cellKey=`${fx},${fy}`;
+      if(!vis.has(cellKey)&&!exploredRef.current.has(cellKey))continue;
+      const fvx=fx-hx+CASTLE_HALF,fvy=fy-hy+CASTLE_HALF;
+      if(fvx<0||fvy<0||fvx>=CASTLE_VIEW||fvy>=CASTLE_VIEW)continue;
+      const fpx=fvx*CASTLE_CELL,fpy=fvy*CASTLE_CELL;
+      const FS=CASTLE_CELL*SCALE;
+      ctx.fillStyle="#cc5500";ctx.fillRect(fpx+2,fpy+2,FS-4,FS-4);
+      ctx.fillStyle="#ffaa00";ctx.fillRect(fpx+4,fpy+4,FS-8,FS-8);
+      ctx.font=`${FS-4}px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText("🔥",fpx+FS/2,fpy+FS/2);
     }
     // Torches — static, indestructible light sources (visual style borrowed
     // from StealthGame's torches, minus the destructible/state-tracking
@@ -581,7 +772,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
         ctx.strokeRect(tvx*S+2,tvy*S+2,S-4,S-4);ctx.setLineDash([]);
       }
     }
-  },[levelIdx,level,rooms,secretRevealed,isFire,torchLitMap,torchReachSets]);
+  },[levelIdx,level,rooms,secretRevealed,isFire,fireCleared,teleportsActive,torchLitMap,torchReachSets]);
 
   React.useEffect(()=>{draw(heroPos.x,heroPos.y,target,level.barrierDefs,groundKeys,encounters,closedBarriers,groundItems);},[heroPos,target,level,groundKeys,encounters,closedBarriers,groundItems,secretRevealed,draw]);
 
@@ -611,10 +802,11 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
       const d=level.barrierDefs.find(d=>nx>=d.rect.x0&&nx<d.rect.x1&&ny>=d.rect.y0&&ny<d.rect.y1);
       if(d&&closedBarriersRef.current.has(d.id)){
         if(d.isSecret&&!secretRevealed.has(d.id)){pathRef.current=[];setTarget(null);return;}
-        if(d.locked&&!heroKeysRef.current.includes(d.locked)){
+        const hasKey=k=>heroKeysRef.current.some(hk=>hk.keyType===k&&hk.level===levelIdx);
+        if(d.locked&&!hasKey(d.locked)){
           addCLog(`🔒 Need the ${d.locked} key!`);pathRef.current=[];setTarget(null);return;
         }
-        if(d.locked&&heroKeysRef.current.includes(d.locked)){
+        if(d.locked&&hasKey(d.locked)){
           setClosedBarriers(cb=>{const next=new Set(cb);next.delete(d.id);return next;});
           addCLog(`🗝 ${d.locked} door opened!`);
         } else {
@@ -625,7 +817,8 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
       // Key pickup
       const gk=groundKeys.find(k=>k.x===nx&&k.y===ny);
       if(gk){
-        setHeroKeys(hk=>[...hk,gk.keyType]);heroKeysRef.current=[...heroKeysRef.current,gk.keyType];
+        const newKey={keyType:gk.keyType,level:levelIdx};
+        setHeroKeys(hk=>[...hk,newKey]);heroKeysRef.current=[...heroKeysRef.current,newKey];
         setGroundKeys(ks=>ks.filter(k=>!(k.x===nx&&k.y===ny)));
         addCLog(`🗝 Found ${gk.keyType} key!`);
       }
@@ -644,20 +837,62 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
           // Level 2 stairs = dragon boss trigger handled by encounters
         }
       }
+      // Level 2's start square doubles as an up-staircase back to level 1,
+      // landing at level 1's own (down-)stairs rather than its entrance.
+      if(levelIdx===1&&nx===level.start[0]&&ny===level.start[1]){
+        pathRef.current=[];setTarget(null);
+        addCLog("🪜 You ascend to the first level...");
+        goToLevel(0,{viaStairs:true});return;
+      }
+
+      // Teleporters — only active once teleportsActive has the gating room
+      // (set by dismissEnc's "teleport" action). Stepping on either pad
+      // sends the hero straight to the other.
+      for(const t of (level.teleporters||[])){
+        if(!teleportsActive.has(t.gateRoom))continue;
+        const at=nx===t.a.x&&ny===t.a.y,bt=nx===t.b.x&&ny===t.b.y;
+        if(!at&&!bt)continue;
+        const dest=at?t.b:t.a;
+        pathRef.current=[];setTarget(null);
+        heroPosRef.current={x:dest.x,y:dest.y};setHeroPos({x:dest.x,y:dest.y});
+        addCLog("🌀 The teleporter whisks you away!");
+        return;
+      }
 
       // Encounters
       const encs=encRef.current||[];
-      const wholeRoom=encs.find(e=>{
-        if(e.type!=="monster"&&e.type!=="dragon_boss"&&e.type!=="guardian")return false;
+      const bossOrGuardian=encs.find(e=>{
+        if(e.type!=="dragon_boss"&&e.type!=="guardian")return false;
+        const r=rooms.find(r=>r.id===e.room);
+        return r&&nx>=r.rx&&nx<r.rx+r.rw&&ny>=r.ry&&ny<r.ry+r.rh;
+      });
+      // All "monster"-type encounters sharing the room the hero just entered
+      // — a room can hold more than one courtier now, so this is a filter
+      // (every match), not a single find. One match plays out as a normal
+      // single fight; more than one launches MultiCombatScreen instead.
+      const roomMonsters=bossOrGuardian?[]:encs.filter(e=>{
+        if(e.type!=="monster")return false;
         const r=rooms.find(r=>r.id===e.room);
         return r&&nx>=r.rx&&nx<r.rx+r.rw&&ny>=r.ry&&ny<r.ry+r.rh;
       });
       const single=encs.find(e=>{
         if(e.type==="monster"||e.type==="dragon_boss"||e.type==="guardian")return false;
-        return e.cx===nx&&e.cy===ny;
+        // NPCs render as an oversized 3x3 icon (see the draw pass below), so
+        // trigger from any of those 9 cells, not just the exact anchor point
+        // — otherwise an NPC sitting at a room corner (like the shelter at
+        // raw 59,22) has its icon spill into non-passable cells, and the
+        // hero can never actually stand close enough to hit the one exact
+        // trigger tile.
+        return Math.abs(e.cx-nx)<=1&&Math.abs(e.cy-ny)<=1;
       });
-      const activeEnc=wholeRoom||single;
+      // NPC proximity wins over a shared-room monster group — otherwise an
+      // NPC placed in the same room as monsters (like the one in room_18)
+      // can never actually be talked to: every step anywhere in that room
+      // would trigger the monster fight first, since it used to be checked
+      // before the NPC's own (much narrower) proximity match.
+      const activeEnc=bossOrGuardian||single||roomMonsters[0];
       if(activeEnc){
+        const isGroup=roomMonsters.length>1&&activeEnc===roomMonsters[0];
         const ek=activeEnc.type==="monster"||activeEnc.type==="dragon_boss"?activeEnc.room:`${activeEnc.cx},${activeEnc.cy}`;
         // Same debounce as the ground-items check: skip re-processing while
         // still on/in the same encounter's key, so a repeated step can't
@@ -665,21 +900,43 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
         // as the hero is on a position with no active encounter, so leaving
         // and coming back later can still re-trigger it normally.
         if(ek!==shownEncounterKeyRef.current){
-          setDefeatedRooms(dr=>{
-            if(dr.has(ek+"_triggered"))return dr;
-            const nd=new Set(dr);nd.add(ek+"_triggered");
+          // Stop any further queued steps right away (matching the island's
+          // stopAt) — otherwise, since this effect doesn't pause for an open
+          // modal, the walk-step timer keeps consuming the rest of a longer
+          // queued path every 5ms while the encounter modal is scheduled/open,
+          // silently moving the hero and re-running the ground-items check at
+          // each new tile in the meantime. Only done on a genuinely new
+          // trigger (inside this debounce branch) — clearing it on every step
+          // near an already-acknowledged encounter would truncate the hero's
+          // path to one cell at a time while just walking past/away from it.
+          pathRef.current=[];setTarget(null);
+          if(activeEnc.type==="npc"){
+            // NPCs are always repeatable — no persisted "used" flag here,
+            // just the ref-based debounce above. A monster-style persisted
+            // flag would get set the instant the hero steps near, before
+            // the modal even opens — if anything ever interrupted that
+            // (e.g. stepping away within the 50ms delay), the flag would be
+            // stuck "used" forever, since castle progress now survives an
+            // exit/re-entry, permanently disabling the NPC.
             shownEncounterKeyRef.current=ek;
-            setTimeout(()=>{
-              if(activeEnc.type==="monster"){
-                setCombatModal({monster:{...activeEnc,maxHealth:100,level:activeEnc.level||1,isDragon:false},fromPos:{...lastCorridorRef.current}});
-              } else if(activeEnc.type==="dragon_boss"){
-                setCombatModal({monster:{...activeEnc,maxHealth:100,strength:40,skill:40,armour:25,attacks:2,level:35,isDragon:true},fromPos:{...lastCorridorRef.current}});
-              } else {
-                setEncModal({enc:activeEnc,fromPos:{...lastCorridorRef.current}});
-              }
-            },50);
-            return nd;
-          });
+            setTimeout(()=>{setEncModal({enc:activeEnc,fromPos:{...lastCorridorRef.current}});},50);
+          } else {
+            setDefeatedRooms(dr=>{
+              if(dr.has(ek+"_triggered"))return dr;
+              const nd=new Set(dr);nd.add(ek+"_triggered");
+              shownEncounterKeyRef.current=ek;
+              setTimeout(()=>{
+                if(activeEnc.type==="dragon_boss"){
+                  setCombatModal({monster:{...activeEnc,maxHealth:100,strength:40,skill:40,armour:25,attacks:2,level:35,isDragon:true},fromPos:{...lastCorridorRef.current}});
+                } else if(isGroup){
+                  setMultiCombatModal({monsters:roomMonsters.map(m=>({...m,maxHealth:100,level:m.level||1,uid:`${m.room}_${m.cx}_${m.cy}`})),room:activeEnc.room,fromPos:{...lastCorridorRef.current}});
+                } else {
+                  setCombatModal({monster:{...activeEnc,maxHealth:100,level:activeEnc.level||1,isDragon:false},fromPos:{...lastCorridorRef.current}});
+                }
+              },50);
+              return nd;
+            });
+          }
         }
       } else {
         shownEncounterKeyRef.current=null;
@@ -704,15 +961,14 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
       }
     },5);
     return()=>clearTimeout(timer);
-  },[pathRef.current.length,heroPos,level,levelIdx,groundKeys,encounters,closedBarriers,rooms,secretRevealed]);
+  },[pathRef.current.length,heroPos,level,levelIdx,groundKeys,encounters,closedBarriers,rooms,secretRevealed,teleportsActive]);
 
   const dismissEnc=(remove,actionType)=>{
     if(remove&&encModal?.enc){
       const enc=encModal.enc;
       if(enc.type==="npc"){
         if(actionType==="secret_door"){
-          // Find secret door to reveal — mark room as secret_revealed
-          setSecretRevealed(s=>new Set([...s,"secret_1"]));
+          setSecretRevealed(s=>new Set([...s,enc.action.doorId]));
           addCLog("🚪 A hidden passage reveals itself!");
         } else if(actionType==="teleport"){
           setTeleportsActive(t=>new Set([...t,enc.room]));
@@ -731,24 +987,66 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
     setEncModal(null);
   };
 
+  // Wrapped so a player-initiated drop (Hero panel, or the mid-combat loot
+  // screen) marks its own tile as "already seen" for the ground-items
+  // auto-popup — otherwise stepping back over that tile right after
+  // dropping (e.g. leaving a room through the same doorway you fought in)
+  // immediately re-shows the dialogue for an item the hero only just put
+  // there themselves.
+  const setGroundItemsTracked=(updater)=>{
+    setGroundItems(g=>{
+      const next=typeof updater==="function"?updater(g):updater;
+      const hgKey=`${heroPosRef.current.x},${heroPosRef.current.y}`;
+      if(next[hgKey]&&next[hgKey].length>0) shownGroundKeyRef.current=hgKey;
+      return next;
+    });
+  };
+
+  if(playingStealth) return <StealthGame
+    onWin={()=>{setPlayingStealth(false);setIceCrystal(true);addCLog("🧊 You steal the Ice Crystal!");}}
+    onExit={()=>setPlayingStealth(false)}/>;
+
+  if(playingNinja) return <NinjaDummy
+    // NinjaDummy fires onReward the instant the 4th level is won, alongside
+    // its own "⚔ Victory!" screen — delay unmounting it so the player
+    // actually gets to see that screen instead of it vanishing immediately.
+    onReward={()=>{setTimeout(()=>{setPlayingNinja(false);setBlackBelt(true);addCLog("🥋 You earn the Black Belt!");},2500);}}
+    onExit={()=>setPlayingNinja(false)}/>;
+
   return(
     <div style={{position:"fixed",inset:0,background:"#0d0a06",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:50}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:CASTLE_CANVAS+"px",marginBottom:6}}>
         <div style={{color:"#9b59b6",fontSize:13,fontFamily:"serif"}}>🏰 Castle — Level {levelIdx+1}</div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <span style={{fontSize:11,color:C.dim}}>HP: <span style={{color:heroState.health>60?"#6fcf97":heroState.health>25?"#c9a02b":"#c0392b"}}>{heroState.health||0}%</span></span>
-          {heroKeys.map((k,i)=><span key={i} style={{fontSize:14,color:KEY_COLORS_C[k]||"#fff"}}>🗝</span>)}
+        <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <span style={{fontSize:11,color:C.dim}}>HP: <span style={{color:heroState.health>60?"#6fcf97":heroState.health>25?"#c9a02b":"#c0392b"}}>{heroState.health||0}%</span></span>
+            {heroKeys.filter(k=>k.level===0).map((k,i)=><span key={i} style={{fontSize:14,color:KEY_COLORS_C[k.keyType]||"#fff"}}>🗝</span>)}
+            {iceCrystal&&<span style={{fontSize:14}} title="Ice Crystal">🧊</span>}
+          </div>
+          {/* Level 2 keys — same icon, mirrored, in their own row. Only
+              these unlock level 2 doors; level 1 keys (row above) don't. */}
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {heroKeys.filter(k=>k.level===1).map((k,i)=><span key={i} style={{fontSize:14,color:KEY_COLORS_C[k.keyType]||"#fff",display:"inline-block",transform:"scaleX(-1)"}}>🗝</span>)}
+            {blackBelt&&<span style={{fontSize:14}} title="Black Belt">🥋</span>}
+          </div>
         </div>
-        <button style={{padding:"4px 12px",background:"transparent",border:"1px solid #7a6a4a",color:"#7a6a4a",cursor:"pointer",fontSize:10,borderRadius:3}} onClick={onExit}>⬆ Exit Castle</button>
+        <div style={{display:"flex",gap:6}}>
+          {/* Debug-only: re-seeds this level's rooms/doors/keys/encounters
+              straight from CASTLE_LEVELS, bypassing the in-session castle
+              state that otherwise persists stale data (e.g. a newly-added
+              fire/torch/encounter) across exit/re-entry. Resets the level
+              like a fresh entry — hero position, opened doors, fog of war,
+              and collected keys for THIS level all reset too. */}
+          <button style={{padding:"4px 12px",background:"transparent",border:"1px solid #7a6a4a",color:"#7a6a4a",cursor:"pointer",fontSize:10,borderRadius:3}} onClick={()=>goToLevel(levelIdx)}>🔄 Reload Level Data</button>
+          <button style={{padding:"4px 12px",background:"transparent",border:"1px solid #7a6a4a",color:"#7a6a4a",cursor:"pointer",fontSize:10,borderRadius:3}} onClick={()=>onExit(buildCastleSnapshot())}>⬆ Exit Castle</button>
+        </div>
       </div>
       <canvas ref={canvasRef} width={CASTLE_CANVAS} height={CASTLE_CANVAS}
         style={{cursor:"pointer",border:"1px solid #3d2f18",display:"block"}}
         onClick={handleClick}/>
       <div style={{marginTop:6,color:C.dim,fontSize:10,maxWidth:CASTLE_CANVAS+"px"}}>{log[0]||"Explore the castle..."}</div>
 
-      {/* HERO INFO TAB — same collapsible panel as the island; no ground-items
-          system in the castle, so heroPos/setGroundItems are omitted and
-          HeroPanel hides its Drop button accordingly. */}
+      {/* HERO INFO TAB — same collapsible panel as the island. */}
       <div style={{position:"fixed",top:"50%",right:0,transform:"translateY(-50%)",
         display:"flex",alignItems:"stretch",zIndex:50}}>
         <div onClick={()=>setKeyOpen(o=>!o)}
@@ -759,11 +1057,14 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
             userSelect:"none"}}>
           {keyOpen?"▶":"◀"} Hero
         </div>
-        {keyOpen&&<HeroPanel heroState={heroState} setHeroState={setHeroState} C={C} btnS={btnS} INV_MAX={INV_MAX} totalArmour={totalArmour} weaponAttacks={weaponAttacks} doEquipWeapon={doEquipWeapon} heroPos={heroPos} setGroundItems={setGroundItems} posScale={SCALE}/>}
+        {keyOpen&&<HeroPanel heroState={heroState} setHeroState={setHeroState} C={C} btnS={btnS} INV_MAX={INV_MAX} totalArmour={totalArmour} weaponAttacks={weaponAttacks} doEquipWeapon={doEquipWeapon} heroPos={heroPos} setGroundItems={setGroundItemsTracked} posScale={SCALE}/>}
       </div>
 
       {encModal&&<NpcModalCastle enc={encModal.enc} heroState={heroState} setHeroState={setHeroState}
         C={C} addLog={addCLog} setDefeatedRooms={setDefeatedRooms}
+        saves={saves} saveMsg={saveMsg} onSaveGame={()=>onSaveGame(buildCastleSnapshot())} onLoadGame={onLoadGame} onDeleteSave={onDeleteSave}
+        hasIceCrystal={iceCrystal} onLaunchStealth={()=>{setEncModal(null);setPlayingStealth(true);}}
+        hasBlackBelt={blackBelt} onLaunchNinja={()=>{setEncModal(null);setPlayingNinja(true);}}
         onDismiss={(remove,actionType)=>dismissEnc(remove,actionType)}/>}
 
       {combatModal&&<CombatScreen
@@ -772,7 +1073,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
         isDragon={combatModal.monster.isDragon}
         isCastle={true}
         addLog={addCLog}
-        groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos}
+        groundItems={groundItems} setGroundItems={setGroundItemsTracked} heroPos={heroPos}
         onVictory={(mon)=>{
           setEncounters(es=>es.filter(e=>e.room!==combatModal.monster.room));
           addCLog(`⚔ ${combatModal.monster.name} defeated!`);
@@ -787,6 +1088,28 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin}
           const ek=combatModal.monster.room;
           setDefeatedRooms(dr=>{const nd=new Set(dr);nd.delete(ek+"_triggered");return nd;});
           setCombatModal(null);
+        }}
+      />}
+
+      {multiCombatModal&&<MultiCombatScreen
+        monsters={multiCombatModal.monsters}
+        heroState={heroState} setHeroState={setHeroState}
+        isCastle={true}
+        addLog={addCLog}
+        groundItems={groundItems} setGroundItems={setGroundItemsTracked} heroPos={heroPos}
+        onVictory={()=>{
+          setEncounters(es=>es.filter(e=>e.room!==multiCombatModal.room));
+          addCLog(`⚔ ${multiCombatModal.monsters.length} courtiers defeated!`);
+          setMultiCombatModal(null);
+        }}
+        onDefeat={()=>{setMultiCombatModal(null);addLog("💀 You fell in the castle...");setHeroState(h=>({...h,health:0}));}}
+        onFlee={()=>{
+          heroPosRef.current=multiCombatModal.fromPos;
+          setHeroPos(multiCombatModal.fromPos);
+          pathRef.current=[];setTarget(null);
+          const ek=multiCombatModal.room;
+          setDefeatedRooms(dr=>{const nd=new Set(dr);nd.delete(ek+"_triggered");return nd;});
+          setMultiCombatModal(null);
         }}
       />}
 

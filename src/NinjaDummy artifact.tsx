@@ -458,7 +458,7 @@ function LevelSelect({ beaten, onSelect }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function NinjaDummy({ onReward }) {
+export default function NinjaDummy({ onReward, onExit }) {
   const [screen,      setScreen]      = useState("select");
   const [levelIdx,    setLevelIdx]    = useState(0);
   const [beaten,      setBeaten]      = useState(new Set());
@@ -568,6 +568,11 @@ export default function NinjaDummy({ onReward }) {
 
   if (screen === "select") return (
     <div style={{ background:C.bg, minHeight:"100vh", fontFamily:"'Segoe UI',system-ui,sans-serif", color:C.text }}>
+      {onExit && (
+        <div style={{ display:"flex", justifyContent:"flex-end", padding:"12px 16px 0" }}>
+          <button onClick={onExit} style={{ background:"none", border:`1px solid ${C.border}`, color:C.dim, cursor:"pointer", fontSize:11, padding:"4px 10px", borderRadius:4 }}>✕ Exit</button>
+        </div>
+      )}
       <LevelSelect beaten={beaten} onSelect={startLevel} />
     </div>
   );
@@ -583,8 +588,9 @@ export default function NinjaDummy({ onReward }) {
           <div style={{ fontSize:16, fontWeight:700, color:lv.glow }}>{lv.name} Ninja</div>
           <div style={{ fontSize:11, color:C.dim }}>You need {lv.hitTarget} hits · Ninja needs {NINJA_HIT_TARGET} · Round {roundNo}</div>
         </div>
-        <div style={{ marginLeft:"auto", display:"flex", gap:10, fontSize:11, color:C.dim }}>
+        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10, fontSize:11, color:C.dim }}>
           {[...beaten].map(i => <span key={i} style={{ color:LEVELS[i].glow }}>✓{LEVELS[i].name[0]}</span>)}
+          {onExit && <button onClick={onExit} style={{ background:"none", border:`1px solid ${C.border}`, color:C.dim, cursor:"pointer", fontSize:11, padding:"4px 10px", borderRadius:4 }}>✕ Exit</button>}
         </div>
       </div>
 

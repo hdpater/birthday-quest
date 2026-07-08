@@ -734,7 +734,12 @@ function renderFrame(ctx, state) {
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ════════════════════════════════════════════════════════════════════════════
-export default function StealthGame(){
+export default function StealthGame({onWin,onExit}={}){
+  // Called from inside the long-lived setInterval tick loop below, so keep a
+  // ref rather than adding onWin to that effect's deps (which would tear
+  // down/rebuild the interval on every parent render).
+  const onWinRef=useRef(onWin);
+  useEffect(()=>{onWinRef.current=onWin;},[onWin]);
   const canvasRef=useRef(null);
   const[alertMsg,setAlertMsg]=useState(null);
   const[tick,setTick]=useState(0);
@@ -1050,6 +1055,9 @@ export default function StealthGame(){
           // Escape stairs (only active once the gem is taken) → win
           g.levelDone=true;
           showMsg('You have successfully stolen the diamond and escaped!','#40d0ff',6000);
+          // Let the win message actually be read before handing control back
+          // to whatever mounted this game.
+          setTimeout(()=>onWinRef.current?.(),6000);
         }else if(btn.barrierId>=0&&g.barriers.has(btn.barrierId)){
           g.barriers.delete(btn.barrierId);
           g.map=buildMap(ld,g.barriers);
@@ -1194,8 +1202,14 @@ export default function StealthGame(){
       display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
       minHeight:'100vh',gap:8,padding:8,
       userSelect:'none',WebkitUserSelect:'none',WebkitTouchCallout:'none'}}>
-      <div style={{fontSize:11,letterSpacing:'0.3em',textTransform:'uppercase',color:'#3a6a8a'}}>
-        ■ Stealth — Level {currentLevel}
+      <div style={{width:'100%',maxWidth:canvasSize,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{fontSize:11,letterSpacing:'0.3em',textTransform:'uppercase',color:'#3a6a8a'}}>
+          ■ Stealth — Level {currentLevel}
+        </div>
+        {onExit&&<div onClick={onExit}
+          style={{fontSize:10,letterSpacing:'0.15em',color:'#5a6a78',cursor:'pointer',border:'1px solid #2a3540',padding:'3px 8px',borderRadius:3}}>
+          ✕ EXIT
+        </div>}
       </div>
       <div style={{display:'flex',gap:24,fontSize:10,color:'#3a4a58'}}>
         <span>ARROWS / WASD / JOYSTICK</span>

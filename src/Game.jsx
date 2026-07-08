@@ -6,7 +6,7 @@ import { MONSTER_GRID } from "./data/images.js";
 import { DRAGON_IMG } from "./data/images.js";
 import { TOURNAMENT_IMG } from "./data/images.js";
 import { COURTIER_IMG } from "./data/images.js";
-import { CASTLE_DRAGON_IMG } from "./data/images.js";
+import { SAVES_KEY, storageGet, storageSet } from "./data/storage.js";
 
 // ── Map data ─────────────────────────────────────────────────────────────────
 import { SIZE } from "./data/maps.js";
@@ -122,10 +122,6 @@ export function groundItem(id, uid) {
 
 const varyPrice=(cost)=>Math.max(1,Math.round(cost*(0.8+Math.random()*0.4)));
 
-// ── Save-game storage (shared by the visible save slots and the hidden one) ──
-const HIDDEN_SAVE_KEY="birthday_quest_hidden_save";
-const storageSet=async(k,v)=>{try{if(window.storage){await window.storage.set(k,v);}else{localStorage.setItem(k,v);}}catch{localStorage.setItem(k,v);}};
-const storageGet=async(k)=>{try{if(window.storage){const r=await window.storage.get(k);return r?r.value:null;}}catch{}return localStorage.getItem(k);};
 const computeChecksum=(data)=>{
   const str=JSON.stringify(data); let h=0;
   for(let i=0;i<str.length;i++){h=(Math.imul(31,h)+str.charCodeAt(i))|0;}
@@ -274,7 +270,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
   const submit=()=>{
     const correct=riddle.a.includes(answer.trim().toLowerCase());
     if(correct){
-      setHeroState(h=>({...h,gold:h.gold+100,candles:h.candles+5}));
+      setHeroState(h=>({...h,gold:h.gold+100,candles:h.candles+50}));
       if(onDefeated) onDefeated(guardian.id);
       const disappear=[
         "With a thunderous crack, the guardian shatters into a thousand shards of light!",
@@ -323,7 +319,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
   );
 }
 
-// ── Dragon Encounter ──────────────────────────────────────────────────────────
+// ── Tournament Fight ───────────────────────────────────────────────────────────
 function TournamentFight({defeatedTournament,setDefeatedTournament,
     heroState,setHeroState,addLog,groundItems,setGroundItems,heroPos,onDismiss,onDead}){
   const fighter=TOURNAMENT_FIGHTERS.find(f=>!defeatedTournament.has(f.id));
@@ -361,7 +357,6 @@ function TournamentFight({defeatedTournament,setDefeatedTournament,
     <CombatScreen
       monster={monster}
       heroState={heroState} setHeroState={setHeroState}
-      isDragon={false}
       isTournament={true}
       fixedLoot={fighter.loot}
       fixedCandles={fighter.candles}
@@ -908,7 +903,7 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
 
 
 // ── Multi-Monster Combat Screen ───────────────────────────────────────────────
-function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,addLog,groundItems,setGroundItems,heroPos,onVictory,onDefeat,onFlee}){
+export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,isCastle,addLog,groundItems,setGroundItems,heroPos,onVictory,onDefeat,onFlee}){
   const [mons,setMons]=useState(initMonsters.map(m=>({...m,health:m.maxHealth||100})));
   const [potionReverts,setPotionReverts]=useState({});
   const [combatLog,setCombatLog]=useState([`⚔ You are ambushed by ${initMonsters.length} enemies!`]);
@@ -1090,7 +1085,9 @@ function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,addLog,
                   {isDead?"💀 Defeated":orig.name}
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"flex-start"}}>
-                  <MonsterPortrait col={orig.col} row={orig.row} size={PIC}/>
+                  {isCastle
+                    ? <CourtierPortrait col={orig.col} row={orig.row} size={PIC}/>
+                    : <MonsterPortrait col={orig.col} row={orig.row} size={PIC}/>}
                   <div style={{flex:1,minWidth:0,paddingTop:2}}>
                     {!isDead&&<>
                       <HpBar pct={live.health}/>
@@ -1157,51 +1154,8 @@ function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,addLog,
 }
 
 // ── Shop dialogues ────────────────────────────────────────────────────────────
-function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDefeatedGuardians,defeatedTournament,setDefeatedTournament,hasMap,setHasMap,groundItems,setGroundItems,heroPos,teleportHero,onDismiss}){
+function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGame,onLoadGame,onDeleteSave,onDismiss}){
   const [tab,setTab]=useState("buy");
-  const [saveMsg,setSaveMsg]=React.useState("");
-  const [saves,setSaves]=useState([]);
-  const SAVES_KEY="birthday_quest_saves";
-  const MAX_SAVES=3;
-  const readSaves=async()=>{
-    try{
-      const raw=await storageGet(SAVES_KEY);
-      const list=raw?JSON.parse(raw):[];
-      return Array.isArray(list)?list:[];
-    }catch{return [];}
-  };
-  React.useEffect(()=>{readSaves().then(setSaves);},[]);
-  const saveGame=async()=>{
-    try{
-      const saveData={heroState,heroPos,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},hasMap,timestamp:Date.now()};
-      const cs=computeChecksum(saveData);
-      let list=await readSaves();
-      list=[...list,{...saveData,checksum:cs}].sort((a,b)=>a.timestamp-b.timestamp);
-      if(list.length>MAX_SAVES) list=list.slice(list.length-MAX_SAVES); // oldest evicted first
-      await storageSet(SAVES_KEY,JSON.stringify(list));
-      setSaves(list);
-      setSaveMsg("✓ Game saved!");setTimeout(()=>setSaveMsg(""),2500);
-    }catch(e){console.error("Save error:",e);setSaveMsg("✗ Save failed: "+String(e.message||e));}
-  };
-  const loadGame=(entry)=>{
-    try{
-      const{checksum:cs,...saveData}=entry;
-      if(cs!==computeChecksum(saveData)){setSaveMsg("✗ Save corrupted!");return;}
-      setHeroState(saveData.heroState);
-      if(saveData.heroPos&&teleportHero) teleportHero(saveData.heroPos.x,saveData.heroPos.y);
-      if(saveData.hasMap!=null)setHasMap(saveData.hasMap);
-      if(saveData.groundItems&&setGroundItems) setGroundItems(saveData.groundItems);
-      if(saveData.defeatedTournament&&setDefeatedTournament){
-        const t=new Set(saveData.defeatedTournament);
-        setDefeatedTournament(t);
-      }
-      if(saveData.defeatedGuardians&&setDefeatedGuardians){
-        const s=new Set(saveData.defeatedGuardians);
-        setDefeatedGuardians(s);
-      }
-      setSaveMsg("✓ Game loaded!");setTimeout(()=>setSaveMsg(""),2500);
-    }catch(e){console.error("Load error:",e);setSaveMsg("✗ Load failed: "+String(e.message||e));}
-  };
   const inv=heroState.inventory||[];
   const eat=(food)=>{
     const idx=inv.findIndex(i=>i.id===food.id&&i.type==="food");
@@ -1256,7 +1210,7 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
           </div>}
           {tab==="save"&&<div style={{padding:"8px 0"}}>
             <div style={{fontSize:11,color:C.dim,marginBottom:14,fontStyle:"italic",textAlign:"center"}}>"Rest here, traveller. Your tale shall be remembered."</div>
-            <button style={{...btnS(C.gold,false),padding:"10px",width:"100%"}} onClick={saveGame}
+            <button style={{...btnS(C.gold,false),padding:"10px",width:"100%"}} onClick={onSaveGame}
               onMouseEnter={e=>{e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}}
               onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.gold;}}>
               💾 Save Game
@@ -1267,17 +1221,25 @@ function TavernDialogue({building,heroState,setHeroState,defeatedGuardians,setDe
               {saveMsg}
             </div>}
             <div style={{marginTop:16,color:C.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>
-              Load Game ({saves.length}/{MAX_SAVES})
+              Load Game ({saves.length}/3)
             </div>
             {saves.length===0
               ? <div style={{fontSize:10,color:C.dim,fontStyle:"italic",textAlign:"center",padding:"8px 0"}}>No saved games found.</div>
               : [...saves].sort((a,b)=>b.timestamp-a.timestamp).map(entry=>(
-                  <button key={entry.timestamp} style={{...btnS(C.blue,false),padding:"8px 10px",width:"100%",textAlign:"left",marginBottom:6}}
-                    onClick={()=>loadGame(entry)}
-                    onMouseEnter={e=>{e.currentTarget.style.background=C.blue;e.currentTarget.style.color="#fff";}}
-                    onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.blue;}}>
-                    📂 {new Date(entry.timestamp).toLocaleString()}
-                  </button>
+                  <div key={entry.timestamp} style={{display:"flex",gap:6,marginBottom:6}}>
+                    <button style={{...btnS(C.blue,false),padding:"8px 10px",flex:1,textAlign:"left"}}
+                      onClick={()=>onLoadGame(entry)}
+                      onMouseEnter={e=>{e.currentTarget.style.background=C.blue;e.currentTarget.style.color="#fff";}}
+                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.blue;}}>
+                      📂 {new Date(entry.timestamp).toLocaleString()}
+                    </button>
+                    <button title="Delete save" style={{...btnS(C.red,false),padding:"8px 10px",flexShrink:0}}
+                      onClick={()=>onDeleteSave&&onDeleteSave(entry)}
+                      onMouseEnter={e=>{e.currentTarget.style.background=C.red;e.currentTarget.style.color="#fff";}}
+                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.red;}}>
+                      ✕
+                    </button>
+                  </div>
                 ))}
           </div>}
         </div>
@@ -1830,7 +1792,7 @@ function WinScreen(){
         <div style={{fontSize:60,marginBottom:12}}>🎂🕯🎉</div>
         <div style={{color:"#f1c40f",fontSize:22,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Happy Birthday, Jon!</div>
         <div style={{color:"#e8d4b0",fontSize:14,lineHeight:1.8,marginBottom:20,fontStyle:"italic"}}>
-          You have gathered all 50 candles and brought them to the Warlock's castle. The birthday celebration can begin! May your 50th year be full of adventure, wisdom, and treasure.
+          The dragon is defeated! You have gathered all 50 candles and brought them to the castle. The birthday celebration can begin! May your 50th year be full of adventure, wisdom, and treasure.
         </div>
         <div style={{fontSize:32}}>🐉 ⚔ 🏰</div>
       </div>
@@ -2136,7 +2098,7 @@ export default function Game(){
   const [fadingGuardian,setFadingGuardian]=useState(null); // id of guardian currently animating out
   const [heroPos,setHeroPos]=useState({x:23,y:14});
   const [target,setTarget]=useState(null);
-  const [log,setLog]=useState(["Your quest begins at The Portly Pixie. Collect all 50 candles!"]);
+  const [log,setLog]=useState(["Your quest begins at The Salty Cove Tavern. Collect all 50 candles!"]);
   const [keyOpen,setKeyOpen]=useState(false);
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
@@ -2163,6 +2125,18 @@ export default function Game(){
     "225,235": [groundItem("coffee","ground_coffee_225_235"), {...gold(20),uid:"gold_225_235"}],
   }); // key="x,y" → [{item},...,gold:N] — items resolved from canonical WEAPONS/ARMOUR_ITEMS/FOOD/magicItem()
   const [gameState,setGameState]=useState("playing"); // playing|won|dead
+  // Save/load — owned here (not TavernDialogue) so a save taken from inside
+  // the castle's shelter dialogue can share the same save-slot list and
+  // reach island-side fields (heroPos, groundItems, etc.) that only live in
+  // this component. pendingCastleState is the current in-session castle
+  // progress: CastleLevel reads it to seed a fresh mount, and reports its
+  // latest snapshot back here on exit — so leaving and re-entering the
+  // castle resumes exactly, even without an explicit save. Loading a save
+  // overwrites it (to the loaded castleState, or null for an island save,
+  // discarding any unsaved in-session castle progress from before the load).
+  const [saves,setSaves]=useState([]);
+  const [saveMsg,setSaveMsg]=useState("");
+  const [pendingCastleState,setPendingCastleState]=useState(null);
   const canvasRef=useRef(null);
   const pathRef=useRef([]);
   const stepRef=useRef(null);
@@ -2485,14 +2459,77 @@ export default function Game(){
 
   const stopAt=(nx,ny)=>{heroPosRef.current={x:nx,y:ny};setHeroPos({x:nx,y:ny});pathRef.current=[];setTarget(null);};
 
-  // Silently snapshots island state to a hidden save slot (not shown in the
-  // Tavern's Load Game list) so it can be restored after a castle visit.
-  const saveHiddenState=async()=>{
+  // ── Unified save/load — visible save slots (shared by the Tavern's Save
+  // tab and the castle shelter NPC's Save section) ──────────────────────────
+  const MAX_SAVES=3;
+  const readSaves=async()=>{
     try{
-      const saveData={heroState,heroPos,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},hasMap,timestamp:Date.now()};
+      const raw=await storageGet(SAVES_KEY);
+      const list=raw?JSON.parse(raw):[];
+      return Array.isArray(list)?list:[];
+    }catch{return [];}
+  };
+  useEffect(()=>{readSaves().then(setSaves);},[]);
+  // castleSnapshot is null for an island save (Tavern), or the castle's own
+  // live-state snapshot when saved from the shelter NPC dialogue. Either way
+  // heroState.location records where to resume: island coordinates always,
+  // plus the castle level/position when castleSnapshot is present.
+  const commitSave=async(castleSnapshot=null)=>{
+    try{
+      const location={
+        area:castleSnapshot?"castle":"island",
+        islandPos:heroPos,
+        castleLevelIdx:castleSnapshot?castleSnapshot.levelIdx:null,
+        castlePos:castleSnapshot?castleSnapshot.heroPos:null,
+      };
+      const saveData={heroState:{...heroState,location},heroPos,defeatedGuardians:[...(defeatedGuardians||[])],defeatedTournament:[...(defeatedTournament||[])],groundItems:groundItems||{},hasMap,castleState:castleSnapshot,timestamp:Date.now()};
       const cs=computeChecksum(saveData);
-      await storageSet(HIDDEN_SAVE_KEY,JSON.stringify({...saveData,checksum:cs}));
-    }catch(e){console.error("Hidden save error:",e);}
+      let list=await readSaves();
+      list=[...list,{...saveData,checksum:cs}].sort((a,b)=>a.timestamp-b.timestamp);
+      if(list.length>MAX_SAVES) list=list.slice(list.length-MAX_SAVES); // oldest evicted first
+      await storageSet(SAVES_KEY,JSON.stringify(list));
+      setSaves(list);
+      setSaveMsg("✓ Game saved!");setTimeout(()=>setSaveMsg(""),2500);
+    }catch(e){console.error("Save error:",e);setSaveMsg("✗ Save failed: "+String(e.message||e));}
+  };
+  const deleteSave=async(entry)=>{
+    if(!window.confirm(`Delete the save from ${new Date(entry.timestamp).toLocaleString()}? This can't be undone.`))return;
+    try{
+      let list=await readSaves();
+      list=list.filter(s=>s.timestamp!==entry.timestamp);
+      await storageSet(SAVES_KEY,JSON.stringify(list));
+      setSaves(list);
+      setSaveMsg("✓ Save deleted.");setTimeout(()=>setSaveMsg(""),2500);
+    }catch(e){console.error("Delete save error:",e);setSaveMsg("✗ Delete failed: "+String(e.message||e));}
+  };
+  const loadGame=(entry)=>{
+    try{
+      const{checksum:cs,...saveData}=entry;
+      if(cs!==computeChecksum(saveData)){setSaveMsg("✗ Save corrupted!");return;}
+      setHeroState(saveData.heroState);
+      const loc=saveData.heroState?.location;
+      const islandPos=loc?.islandPos||saveData.heroPos;
+      if(islandPos) stopAt(islandPos.x,islandPos.y);
+      if(saveData.hasMap!=null)setHasMap(saveData.hasMap);
+      if(saveData.groundItems)setGroundItems(saveData.groundItems);
+      if(saveData.defeatedTournament){
+        const t=new Set(saveData.defeatedTournament);
+        setDefeatedTournament(t);defeatedTournamentRef.current=t;
+      }
+      if(saveData.defeatedGuardians){
+        const s=new Set(saveData.defeatedGuardians);
+        setDefeatedGuardians(s);defeatedGuardiansRef.current=s;
+      }
+      if(loc?.area==="castle"&&saveData.castleState){
+        setPendingCastleState(saveData.castleState);
+        setGameState("castle");
+        setModal(null); // dismiss whatever island dialogue triggered the load — can't stay open over the castle
+      } else {
+        setPendingCastleState(null);
+        setGameState("playing");
+      }
+      setSaveMsg("✓ Game loaded!");setTimeout(()=>setSaveMsg(""),2500);
+    }catch(e){console.error("Load error:",e);setSaveMsg("✗ Load failed: "+String(e.message||e));}
   };
 
   const walkPath=useCallback(()=>{
@@ -2634,7 +2671,7 @@ export default function Game(){
       </div>
       {/* MODALS */}
       {modal?.type==="building"&&modal.data.type==="tavern"&&
-        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} defeatedGuardians={defeatedGuardians} setDefeatedGuardians={(s)=>{setDefeatedGuardians(s);defeatedGuardiansRef.current=s;}} defeatedTournament={defeatedTournament} setDefeatedTournament={(s)=>{setDefeatedTournament(s);defeatedTournamentRef.current=s;}} hasMap={hasMap} setHasMap={setHasMap} groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos} teleportHero={stopAt} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
+        <TavernDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} saves={saves} saveMsg={saveMsg} onSaveGame={()=>commitSave(null)} onLoadGame={loadGame} onDeleteSave={deleteSave} onDismiss={()=>{if((heroState.inventory||[]).length>INV_MAX){alert("Please drop or use items before leaving (max 5).");return;}setModal(null);addLog(`You leave ${modal.data.name}`);}}/>}
       {modal?.type==="building"&&modal.data.type==="armourer"&&
         <ArmourerDialogue building={modal.data} heroState={heroState} setHeroState={setHeroState} onDismiss={()=>{setModal(null);addLog(`You leave ${modal.data.name}.`);}}/>}
       {modal?.type==="building"&&modal.data.type==="arena"&&
@@ -2644,8 +2681,8 @@ export default function Game(){
       {modal?.type==="building"&&modal.data.type==="castle"&&
         <CastleDialogue heroState={heroState}
           onDismiss={()=>{setModal(null);addLog("The guard glares at you as you leave.");}}
-          onEnter={()=>{setModal(null);saveHiddenState();setGameState("castle");addLog("You enter the castle!");}}
-          onWin={()=>{setModal(null);setGameState("win");}}/>}
+          onEnter={()=>{setModal(null);setGameState("castle");addLog("You enter the castle!");}}
+          onWin={()=>{setModal(null);setGameState("won");}}/>}
       {modal?.type==="guardian"&&
         <GuardianEncounter guardian={modal.data} setHeroState={setHeroState}
           onDefeated={(id)=>{
@@ -2722,8 +2759,10 @@ export default function Game(){
         <MerchantDialogue stock={merchantStock} setStock={setMerchantStock} heroState={heroState} setHeroState={setHeroState} groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos} onDismiss={()=>{setModal(null);setMerchantStock(null);addLog("The merchant tips his hat and moves on.");}}/>}
 
       {gameState==="won"&&<WinScreen/>}
-      {gameState==="castle"&&<CastleLevel heroState={heroState} setHeroState={setHeroState} addLog={addLog} onExit={()=>{setGameState("playing");addLog("You return to the island.");}} onWin={()=>{setGameState("win");addLog("🐉 The Golden Dragon falls! Victory!");}}/>}
-      {gameState==="dead"&&<GameOverScreen onRestart={()=>{setHeroState({...INIT_HERO});setHeroPos({x:23,y:14});heroPosRef.current={x:23,y:14};setDefeatedGuardians(new Set());defeatedGuardiansRef.current=new Set();setGameState("playing");setModal(null);pathRef.current=[];setLog(["Your quest begins anew at The Portly Pixie."]);}}/>}
+      {gameState==="castle"&&<CastleLevel heroState={heroState} setHeroState={setHeroState} addLog={addLog}
+        initialState={pendingCastleState} saves={saves} saveMsg={saveMsg} onSaveGame={(snap)=>commitSave(snap)} onLoadGame={loadGame} onDeleteSave={deleteSave}
+        onExit={(snap)=>{setPendingCastleState(snap);setGameState("playing");addLog("You return to the island.");}} onWin={()=>{setGameState("won");addLog("🐉 The Golden Dragon falls! Victory!");}}/>}
+      {gameState==="dead"&&<GameOverScreen onRestart={()=>{setHeroState({...INIT_HERO});setHeroPos({x:23,y:14});heroPosRef.current={x:23,y:14};setDefeatedGuardians(new Set());defeatedGuardiansRef.current=new Set();setGameState("playing");setModal(null);pathRef.current=[];setLog(["Your quest begins anew at The Salty Cove Tavern."]);}}/>}
     </div>
   );
 }
