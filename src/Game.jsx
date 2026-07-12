@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import CastleLevel from "./Castle.jsx";
+import finalCelebration from "../images/final_celebration.mp4";
 // ── Images ───────────────────────────────────────────────────────────────────
 import { GUARDIAN_IMG } from "./data/images.js";
 import { MONSTER_GRID } from "./data/images.js";
@@ -1785,17 +1786,38 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
 
 
 // ── WIN / GAME OVER screens ───────────────────────────────────────────────────
-function WinScreen(){
+function WinScreen({onContinue}){
+  const [stage,setStage]=useState("message"); // "message" -> "video"
+  const [videoEnded,setVideoEnded]=useState(false);
   return(
     <div style={{position:"fixed",inset:0,background:"#000e",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
-      <div style={{background:"#12101a",border:"2px solid #f1c40f",borderRadius:12,padding:32,maxWidth:440,width:"95%",textAlign:"center",boxShadow:"0 0 60px #f1c40f44"}}>
-        <div style={{fontSize:60,marginBottom:12}}>🎂🕯🎉</div>
-        <div style={{color:"#f1c40f",fontSize:22,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Happy Birthday, Jon!</div>
-        <div style={{color:"#e8d4b0",fontSize:14,lineHeight:1.8,marginBottom:20,fontStyle:"italic"}}>
-          The dragon is defeated! You have gathered all 50 candles and brought them to the castle. The birthday celebration can begin! May your 50th year be full of adventure, wisdom, and treasure.
+      {stage==="message"&&
+        <div style={{background:"#12101a",border:"2px solid #f1c40f",borderRadius:12,padding:32,maxWidth:440,width:"95%",textAlign:"center",boxShadow:"0 0 60px #f1c40f44"}}>
+          <div style={{fontSize:60,marginBottom:12}}>🎂🕯🎉</div>
+          <div style={{color:"#f1c40f",fontSize:22,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Happy Birthday, Jon!</div>
+          <div style={{color:"#e8d4b0",fontSize:14,lineHeight:1.8,marginBottom:20,fontStyle:"italic"}}>
+            The dragon is defeated and your memory unclouds! You have gathered all 50 candles and brought them to the castle for your own birthday! The birthday celebration can begin! May your 50th year be full of adventure, wisdom, and treasure.
+          </div>
+          <div style={{fontSize:32,marginBottom:20}}>🐉 ⚔ 🏰</div>
+          <button style={{padding:"10px 28px",background:"transparent",border:"1.5px solid #f1c40f",color:"#f1c40f",fontSize:13,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",borderRadius:3}}
+            onClick={()=>setStage("video")}>
+            Continue
+          </button>
         </div>
-        <div style={{fontSize:32}}>🐉 ⚔ 🏰</div>
-      </div>
+      }
+      {stage==="video"&&
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",maxWidth:"90%"}}>
+          <video src={finalCelebration} autoPlay playsInline
+            onEnded={()=>setVideoEnded(true)}
+            style={{maxWidth:"100%",maxHeight:"80vh",objectFit:"contain",marginBottom:20}}/>
+          {videoEnded&&
+            <button style={{padding:"10px 28px",background:"transparent",border:"1.5px solid #f1c40f",color:"#f1c40f",fontSize:13,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",borderRadius:3}}
+              onClick={onContinue}>
+              Continue
+            </button>
+          }
+        </div>
+      }
     </div>
   );
 }
@@ -2758,7 +2780,7 @@ export default function Game(){
       {modal?.type==="merchant"&&merchantStock&&
         <MerchantDialogue stock={merchantStock} setStock={setMerchantStock} heroState={heroState} setHeroState={setHeroState} groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos} onDismiss={()=>{setModal(null);setMerchantStock(null);addLog("The merchant tips his hat and moves on.");}}/>}
 
-      {gameState==="won"&&<WinScreen/>}
+      {gameState==="won"&&<WinScreen onContinue={()=>{setGameState("playing");addLog("You step out of the castle, your quest complete.");}}/>}
       {gameState==="castle"&&<CastleLevel heroState={heroState} setHeroState={setHeroState} addLog={addLog}
         initialState={pendingCastleState} saves={saves} saveMsg={saveMsg} onSaveGame={(snap)=>commitSave(snap)} onLoadGame={loadGame} onDeleteSave={deleteSave}
         onExit={(snap)=>{setPendingCastleState(snap);setGameState("playing");addLog("You return to the island.");}} onWin={()=>{setGameState("won");addLog("🐉 The Golden Dragon falls! Victory!");}}/>}
