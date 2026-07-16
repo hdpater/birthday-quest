@@ -1215,7 +1215,8 @@ export default function StealthGame({onWin,onExit}={}){
         <span>ARROWS / WASD / JOYSTICK</span>
         <span>TICK: {tick}</span>
       </div>
-      <div style={{height:20,fontSize:13,letterSpacing:'0.2em',fontWeight:'bold',
+      <div style={{minHeight:20,maxWidth:`min(${canvasSize}px, 92vw)`,fontSize:13,letterSpacing:'0.2em',fontWeight:'bold',
+        textAlign:'center',lineHeight:1.4,
         color:alertMsg?.color||'#e84040',opacity:alertMsg?1:0,transition:'opacity 0.12s'}}>
         {alertMsg?.text||'⚠'}
       </div>
@@ -1239,7 +1240,7 @@ export default function StealthGame({onWin,onExit}={}){
             <div style={{
               fontSize:14,color:infoScreen.color,letterSpacing:'0.06em',
               lineHeight:1.8,textAlign:'center',whiteSpace:'pre-line',
-              maxWidth:canvasSize*0.82,
+              maxWidth:`min(${canvasSize*0.82}px, 85vw)`,
             }}>
               {infoScreen.text}
             </div>

@@ -244,7 +244,7 @@ function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,sa
 }
 
 
-export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,initialState,onSaveGame,onLoadGame,onDeleteSave,saves,saveMsg}){
+export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,onDeath,initialState,onSaveGame,onLoadGame,onDeleteSave,saves,saveMsg}){
   const canvasRef=React.useRef(null);
   // initialState (from a loaded save's castleState) seeds every piece of
   // castle progress below instead of the fresh-entry defaults — levelIdx
@@ -1035,8 +1035,8 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
     onExit={()=>setPlayingNinja(false)}/>;
 
   return(
-    <div style={{position:"fixed",inset:0,background:"#0d0a06",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:50}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:CASTLE_CANVAS+"px",marginBottom:6}}>
+    <div style={{position:"fixed",inset:0,background:"#0d0a06",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",overflowY:"auto",padding:"8px 0",zIndex:50}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:CASTLE_CANVAS+"px",marginBottom:6,flexShrink:0}}>
         <div style={{color:"#9b59b6",fontSize:13,fontFamily:"serif"}}>🏰 Castle — Level {levelIdx+1}</div>
         <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1053,9 +1053,9 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         </div>
       </div>
       <canvas ref={canvasRef} width={CASTLE_CANVAS} height={CASTLE_CANVAS}
-        style={{cursor:"pointer",border:"1px solid #3d2f18",display:"block"}}
+        style={{cursor:"pointer",border:"1px solid #3d2f18",display:"block",flexShrink:0}}
         onClick={handleClick}/>
-      <div style={{marginTop:6,color:C.dim,fontSize:10,maxWidth:CASTLE_CANVAS+"px"}}>{log[0]||"Explore the castle..."}</div>
+      <div style={{marginTop:6,marginBottom:8,color:C.dim,fontSize:10,maxWidth:CASTLE_CANVAS+"px",flexShrink:0}}>{log[0]||"Explore the castle..."}</div>
 
       {/* HERO INFO TAB — same collapsible panel as the island. */}
       <div style={{position:"fixed",top:"50%",right:0,transform:"translateY(-50%)",
@@ -1091,7 +1091,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
           if(mon.isDragon){setCombatModal(null);onWin&&onWin();}
           else setCombatModal(null);
         }}
-        onDefeat={()=>{setCombatModal(null);addLog("💀 You fell in the castle...");setHeroState(h=>({...h,health:0}));}}
+        onDefeat={()=>{setCombatModal(null);addLog("💀 You fell in the castle...");setHeroState(h=>({...h,health:0}));onDeath&&onDeath();}}
         onFlee={()=>{
           heroPosRef.current=combatModal.fromPos;
           setHeroPos(combatModal.fromPos);
@@ -1113,7 +1113,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
           addCLog(`⚔ ${multiCombatModal.monsters.length} courtiers defeated!`);
           setMultiCombatModal(null);
         }}
-        onDefeat={()=>{setMultiCombatModal(null);addLog("💀 You fell in the castle...");setHeroState(h=>({...h,health:0}));}}
+        onDefeat={()=>{setMultiCombatModal(null);addLog("💀 You fell in the castle...");setHeroState(h=>({...h,health:0}));onDeath&&onDeath();}}
         onFlee={()=>{
           heroPosRef.current=multiCombatModal.fromPos;
           setHeroPos(multiCombatModal.fromPos);

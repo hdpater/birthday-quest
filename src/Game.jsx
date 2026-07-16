@@ -715,7 +715,11 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
       setLoot({gold,items:lootItems,levelUp,levelUpStat});
       setHeroState(h=>({...h,gold:h.gold+gold,inventory:[...h.inventory,...lootItems],
         ...(levelUpStat?{[levelUpStat]:h[levelUpStat]+1}:{})}));
-    } else if(outcome==="dead") onDefeat();
+    }
+    // "dead" just sets `done` above — onDefeat fires from the "Game Over"
+    // button's onClick once the player acknowledges the death screen, not
+    // automatically here (that used to unmount the modal before the
+    // "You have fallen" panel could ever render).
   };
 
   const doFight=()=>{
@@ -997,7 +1001,11 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
       setLoot({gold,items:lootItems,levelUp,levelUpStat});
       setHeroState(h=>({...h,gold:h.gold+gold,inventory:[...h.inventory,...lootItems],
         ...(levelUpStat?{[levelUpStat]:h[levelUpStat]+1}:{})}));
-    } else if(outcome==="dead") onDefeat();
+    }
+    // "dead" just sets `done` above — onDefeat fires from the "Game Over"
+    // button's onClick once the player acknowledges the death screen, not
+    // automatically here (that used to unmount the modal before the
+    // "You have fallen" panel could ever render).
   };
 
   const doFight=(targetUid)=>{
@@ -2803,7 +2811,8 @@ export default function Game(){
       {gameState==="won"&&<WinScreen onContinue={()=>{setGameState("playing");addLog("You step out of the castle, your quest complete.");}}/>}
       {gameState==="castle"&&<CastleLevel heroState={heroState} setHeroState={setHeroState} addLog={addLog}
         initialState={pendingCastleState} saves={saves} saveMsg={saveMsg} onSaveGame={(snap)=>commitSave(snap)} onLoadGame={loadGame} onDeleteSave={deleteSave}
-        onExit={(snap)=>{setPendingCastleState(snap);setGameState("playing");addLog("You return to the island.");}} onWin={()=>{setGameState("won");addLog("🐉 The Golden Dragon falls! Victory!");}}/>}
+        onExit={(snap)=>{setPendingCastleState(snap);setGameState("playing");addLog("You return to the island.");}} onWin={()=>{setGameState("won");addLog("🐉 The Golden Dragon falls! Victory!");}}
+        onDeath={()=>setGameState("dead")}/>}
       {gameState==="dead"&&<GameOverScreen onRestart={()=>{setHeroState({...INIT_HERO});setHeroPos({x:23,y:14});heroPosRef.current={x:23,y:14};setDefeatedGuardians(new Set());defeatedGuardiansRef.current=new Set();setGameState("playing");setModal(null);pathRef.current=[];setLog(["Your quest begins anew at The Salty Cove Tavern."]);}}/>}
     </div>
   );
