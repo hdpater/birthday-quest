@@ -60,13 +60,14 @@ import { GUARDIAN_ANGRY } from "./data/buildings.js";
 import { WEAPONS } from "./data/items.js";
 import { ARMOUR_ITEMS } from "./data/items.js";
 import { FOOD } from "./data/items.js";
-import { BOARD_PRICE } from "./data/items.js";
 import { MAGIC_TYPES_LIST } from "./data/items.js";
 import { MAGIC_FORMS_LIST } from "./data/items.js";
 import { MAGIC_BASE } from "./data/items.js";
 import { MAGIC_MULT } from "./data/items.js";
 import { MAGIC_COLOR } from "./data/items.js";
 import { MAGIC_COMPS } from "./data/items.js";
+import { MAGIC_TYPE_TIER } from "./data/items.js";
+import { MAGIC_FORM_TIER } from "./data/items.js";
 
 // ── Helper functions ──────────────────────────────────────────────────────────
 const sellPct  = (item) => item.type==="magic"?0.8:0.5;
@@ -99,13 +100,19 @@ export function totalArmour(eq, base) {
 const armourStrBonus=(item)=>item?.strBonus||0;
 const armourSklBonus=(item)=>item?.sklBonus||0;
 
-function randomMagicItem() {
-    const t=MAGIC_TYPES_LIST[rng(0,6)], f=MAGIC_FORMS_LIST[rng(0,2)], id=`magic_${Date.now()}_${Math.random()}`;
-    return magicItem(t, f, id);
+const magicTier=(t,f)=>MAGIC_TYPE_TIER[t]+MAGIC_FORM_TIER[f];
+const MAGIC_COMBOS=MAGIC_TYPES_LIST.flatMap(t=>MAGIC_FORMS_LIST.map(f=>({t,f,tier:magicTier(t,f)})));
+
+// maxTier, if given, restricts the pick to combos at or below it — mirrors
+// how WEAPONS/ARMOUR_ITEMS loot is gated by monster/merchant tier.
+function randomMagicItem(maxTier) {
+    const pool=maxTier?MAGIC_COMBOS.filter(c=>c.tier<=maxTier):MAGIC_COMBOS;
+    const {t,f}=pool[rng(0,pool.length-1)];
+    return magicItem(t, f, `magic_${Date.now()}_${Math.random()}`);
 }
 
 function magicItem(t, f, id) {
-    return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t]};
+    return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t],tier:magicTier(t,f)};
 }
 
 export function gold(amount) {
@@ -135,7 +142,7 @@ function generateMerchantStock(tier) {
   const shuffled=[...pool].sort(()=>Math.random()-0.5);
   const items=shuffled.slice(0,rng(4,8)).map(i=>({...i,uid:Date.now()+Math.random(),price:varyPrice(i.cost??i.price)}));
     if(Math.random()<0.5){
-	const magic=randomMagicItem();
+	const magic=randomMagicItem(tier);
 	items.push({...magic,uid:Date.now()+Math.random(),price:varyPrice(magic.cost)});
     }
   return items;
@@ -685,16 +692,16 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
       }
       const gold=rng(5+mon.level,10+mon.level*4);
       const lootItems=[];
+      // Tier scales with monster level: lvl1-5→t1, 6-10→t2, 11-15→t3, 16-20→t4, 21+→t5
+      const monTier=Math.min(5,Math.ceil((mon.level||1)/5));
       if(Math.random()<0.75){
-        // Tier scales with monster level: lvl1-5→t1, 6-10→t2, 11-15→t3, 16-20→t4, 21+→t5
-        const monTier=Math.min(5,Math.ceil((mon.level||1)/5));
         // Allow items from tier-1 to tier, weighted toward current tier
         const pool=[...FOOD,...WEAPONS.filter(i=>i.tier<=monTier),...ARMOUR_ITEMS.filter(i=>i.tier<=monTier)];
         // Weight higher-tier items more
         const weighted=pool.flatMap(i=>i.tier?(Array(i.tier).fill(i)):[i]);
         lootItems.push({...weighted[rng(0,weighted.length-1)],uid:Date.now()+Math.random()});
       }
-      if(Math.random()<0.10) lootItems.push({...randomMagicItem(),uid:Date.now()+Math.random()});
+      if(Math.random()<0.10) lootItems.push({...randomMagicItem(monTier),uid:Date.now()+Math.random()});
       // Level-up: if monster level >= hero's effective level, boost str or skl
       const heroLvl=Math.round((heroState.baseStrength+heroState.baseSkill)/2);
       const levelUp=mon.level>=heroLvl&&!mon.isDragon;
@@ -798,21 +805,21 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
     setHeroState(h=>{
       let nh={...h};
 	if(comps.includes("fire")){
-	    const d=rng(1,5);
+	    const d=rng(1,5)+3;
 	    reverts.health=h.health;
 	    nh.health=h.health+d;
 	    addCombatLog(`${pot.name}: +${d} health.`);
 	}
 	if(comps.includes("lightning")){
-	    const d=rng(1,5);
+	    const d=rng(1,5)+3;
 	    reverts.baseSkill=h.baseSkill;
-	    nh.baseSkill=(h.baseSkill||12)+d;
+	    nh.baseSkill=(h.baseSkill)+d;
 	    addCombatLog(`${pot.name}: +${d} skill.`);
 	}
 	if(comps.includes("iron")){
-	    const d=rng(1,5);
+	    const d=rng(1,5)+3;
 	    reverts.baseStrength=h.baseStrength;
-	    nh.baseStrength=(h.baseStrength||10)+d;
+	    nh.baseStrength=(h.baseStrength)+d;
 	    addCombatLog(`${pot.name}: +${d} strength.`);
 	}
       nh.inventory=h.inventory.filter(i=>i.id!==pot.id);
@@ -950,13 +957,13 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
       const lootItems=[];
       for(const m of allMons){
         gold+=rng(5+m.level,10+m.level*4);
+        const monTier=Math.min(5,Math.ceil((m.level||1)/5));
         if(Math.random()<0.75){
-          const monTier=Math.min(5,Math.ceil((m.level||1)/5));
           const pool=[...FOOD,...WEAPONS.filter(i=>i.tier<=monTier),...ARMOUR_ITEMS.filter(i=>i.tier<=monTier)];
           const weighted=pool.flatMap(i=>i.tier?(Array(i.tier).fill(i)):[i]);
           lootItems.push({...weighted[rng(0,weighted.length-1)],uid:Date.now()+Math.random()});
         }
-        if(Math.random()<0.10) lootItems.push({...randomMagicItem(),uid:Date.now()+Math.random()});
+        if(Math.random()<0.10) lootItems.push({...randomMagicItem(monTier),uid:Date.now()+Math.random()});
       }
       const topMon=allMons.reduce((a,b)=>b.level>a.level?b:a,allMons[0]);
       const heroLvl=Math.round((heroState.baseStrength+heroState.baseSkill)/2);
@@ -1057,8 +1064,8 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
     setHeroState(h=>{
       let nh={...h};
       if(comps.includes("fire")){const d=rng(1,5);reverts.health=h.health;nh.health=h.health+d;addCombatLog(`${pot.name}: +${d} health.`);}
-      if(comps.includes("lightning")){const d=rng(1,5);reverts.baseSkill=h.baseSkill;nh.baseSkill=(h.baseSkill||12)+d;addCombatLog(`${pot.name}: +${d} skill.`);}
-      if(comps.includes("iron")){const d=rng(1,5);reverts.baseStrength=h.baseStrength;nh.baseStrength=(h.baseStrength||10)+d;addCombatLog(`${pot.name}: +${d} strength.`);}
+      if(comps.includes("lightning")){const d=rng(1,5);reverts.baseSkill=h.baseSkill;nh.baseSkill=h.baseSkill+d;addCombatLog(`${pot.name}: +${d} skill.`);}
+      if(comps.includes("iron")){const d=rng(1,5);reverts.baseStrength=h.baseStrength;nh.baseStrength=h.baseStrength+d;addCombatLog(`${pot.name}: +${d} strength.`);}
       nh.inventory=h.inventory.filter(i=>i.id!==pot.id);
       return nh;
     });
@@ -1205,7 +1212,7 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
               <span style={{fontSize:24}}>🛏</span>
               <div style={{flex:1}}><div style={{fontSize:13,color:C.text}}>Full Night's Board</div><div style={{fontSize:11,color:C.dim}}>Warm bed & hearty breakfast. Restores health to 100%.</div></div>
               <span style={{fontSize:12,color:C.green}}>Free</span>
-              <button style={btnS(C.blue,heroState.health===100)} disabled={heroState.health===100} onClick={buyBoard} onMouseEnter={e=>{if(heroState.gold>=BOARD_PRICE&&heroState.health<100){e.currentTarget.style.background=C.blue;e.currentTarget.style.color="#fff";}}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=(heroState.gold>=BOARD_PRICE&&heroState.health<100)?C.blue:"#444";}}>Stay</button>
+              <button style={btnS(C.blue,heroState.health===100)} disabled={heroState.health===100} onClick={buyBoard} onMouseEnter={e=>{if(heroState.health<100){e.currentTarget.style.background=C.blue;e.currentTarget.style.color="#fff";}}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=heroState.health<100?C.blue:"#444";}}>Stay</button>
             </div>
             {heroState.health===100&&<div style={{color:C.dim,fontSize:11,fontStyle:"italic",textAlign:"center"}}>You are already at full health.</div>}
           {heroState.health<100&&<div style={{color:C.dim,fontSize:11,textAlign:"center",marginTop:6}}>Tonight's stay is complimentary.</div>}
@@ -1257,7 +1264,12 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
   const notify=msg=>{setNotice(msg);setTimeout(()=>setNotice(""),2500);};
   const eq=heroState.equipped||{};
   const inv=heroState.inventory||[];
-  const armourItems=[...WEAPONS,...ARMOUR_ITEMS];
+  // The Jolly Blacksmith stocks the cheap end (tiers 1-2); Alvin's Armoury
+  // stocks the pricier end (tiers 3-4) — keeps the two armourers distinct
+  // instead of both selling the same full catalogue.
+  const ARMOURER_TIERS={jolly_smith:[1,2],alvin:[3,4]};
+  const [minTier,maxTier]=ARMOURER_TIERS[building.id]||[1,5];
+  const armourItems=[...WEAPONS,...ARMOUR_ITEMS].filter(i=>i.tier>=minTier&&i.tier<=maxTier);
 
   const buy=(item)=>{
     if(heroState.gold<item.cost) return;
@@ -1354,7 +1366,7 @@ function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onD
     const noRingEquipped=!eq.finger;
     // Block purchase if inventory full, unless it's a ring and slot is empty
     if(inv.length>=INV_MAX&&!(isRing&&noRingEquipped)) return;
-    const item={id:`magic_${Date.now()}_${Math.random()}`,uid:Date.now()+Math.random(),name:`${type[0].toUpperCase()+type.slice(1)} ${form[0].toUpperCase()+form.slice(1)}`,type:"magic",form,magicType:type,cost:price,color:MAGIC_COLOR[type]};
+    const item={...magicItem(type,form,`magic_${Date.now()}_${Math.random()}`),uid:Date.now()+Math.random()};
     if(isRing&&noRingEquipped){
       // Equip immediately, don't add to inventory
       setHeroState(h=>({...h,gold:h.gold-price,equipped:{...h.equipped,finger:item}}));
@@ -1388,7 +1400,7 @@ function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onD
         <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
           {tab==="buy"&&MAGIC_FORMS_LIST.map(form=><React.Fragment key={form}>
             <div style={{color:C.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5,marginTop:8}}>{"⚡🧪💍"[MAGIC_FORMS_LIST.indexOf(form)]} {form}s</div>
-            {MAGIC_TYPES_LIST.map(type=>{const price=MAGIC_BASE[form]*MAGIC_MULT[type];const can=heroState.gold>=price;return(
+            {MAGIC_TYPES_LIST.filter(type=>magicTier(type,form)<=5).map(type=>{const price=MAGIC_BASE[form]*MAGIC_MULT[type];const can=heroState.gold>=price;return(
               <div key={type} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",marginBottom:4,borderRadius:3,background:can?"#1f1a11":"#130f0a",border:`1px solid ${C.border}`,opacity:can?1:0.5}}>
                 <div style={{width:8,height:8,borderRadius:"50%",background:MAGIC_COLOR[type],flexShrink:0}}/>
                 <div style={{flex:1}}><span style={{fontSize:11,color:C.text}}>{type[0].toUpperCase()+type.slice(1)} {form} </span><span style={{fontSize:10,color:C.dim}}>· {MAGIC_DESC[form][type]}</span></div>
