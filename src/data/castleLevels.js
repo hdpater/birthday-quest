@@ -47,7 +47,7 @@ export const CASTLE_LEVELS = [
       "29,30": [{...magicItem("mystic","potion","gi_l1_29_30_magic"),uid:"gi_l1_29_30_magic"}], // room_14, Bone Warlord Lv45 (t9)
       "23,51": [{...magicItem("shadow","wand","gi_l1_23_51_magic"),uid:"gi_l1_23_51_magic"}], // room_18, Undead Governess Lv41 (t9)
       "13,51": [{...magicItem("crystal","ring","gi_l1_13_51_magic"),uid:"gi_l1_13_51_magic"}], // room_17, Gaunt Chamberlain Lv44 (t9)
-      "3,51": [{...magicItem("shadow","ring","gi_l1_3_51_magic"),uid:"gi_l1_3_51_magic"}], // room_16, Undead Bishop Lv48 (t10)
+      "3,51": [{...magicItem("mystic","ring","gi_l1_3_51_magic"),uid:"gi_l1_3_51_magic"}], // room_16, Undead Bishop Lv48 (t10)
     }),
     // Raw (pre-scale) torch positions — static, indestructible light sources.
     // Entries are [x, y, corner], corner one of "ul"/"ur"/"dl"/"dr" (default
