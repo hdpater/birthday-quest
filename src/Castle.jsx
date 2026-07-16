@@ -1,5 +1,5 @@
 import React from "react";
-import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX } from "./Game.jsx";
+import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX, squareViewStyle } from "./Game.jsx";
 import { NPC_IMG } from "./data/images.js";
 import { CASTLE_LEVELS } from "./data/castleLevels.js";
 import StealthGame from "./StealthGame.tsx";
@@ -812,8 +812,9 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
   // Click to move
   const handleClick=React.useCallback((e)=>{
     const rect=canvasRef.current.getBoundingClientRect();
-    const cx=Math.floor((e.clientX-rect.left)/CASTLE_CELL);
-    const cy=Math.floor((e.clientY-rect.top)/CASTLE_CELL);
+    const scaleX=CASTLE_CANVAS/rect.width, scaleY=CASTLE_CANVAS/rect.height;
+    const cx=Math.floor((e.clientX-rect.left)*scaleX/CASTLE_CELL);
+    const cy=Math.floor((e.clientY-rect.top)*scaleY/CASTLE_CELL);
     const wx=heroPosRef.current.x-CASTLE_HALF+cx;
     const wy=heroPosRef.current.y-CASTLE_HALF+cy;
     if(!isPassable(wx,wy))return;
@@ -1052,9 +1053,17 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
     onReward={()=>{setTimeout(()=>{setPlayingNinja(false);setBlackBelt(true);addCLog("🥋 You earn the Black Belt!");},2500);}}
     onExit={()=>setPlayingNinja(false)}/>;
 
+  // Same responsive fit as the main game's map (see squareViewStyle) — the
+  // castle's own chrome (title/key-icon header + log footer) is taller than
+  // the main game's single-row status bar, so it reserves more space, but
+  // it's the same "shrink the square to whatever's left" formula, applied
+  // to the header/footer widths too so they stay visually aligned with the
+  // canvas below them instead of the canvas alone shrinking under a
+  // fixed-width header (which is what forced the old scroll-to-see-it fix).
+  const castleBox=squareViewStyle(80);
   return(
-    <div style={{position:"fixed",inset:0,background:"#0d0a06",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",overflowY:"auto",padding:"8px 0",zIndex:50}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:CASTLE_CANVAS+"px",marginBottom:6,flexShrink:0}}>
+    <div style={{position:"fixed",inset:0,background:"#0d0a06",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflowY:"auto",padding:"8px 0",zIndex:50}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:castleBox.width,marginBottom:6,flexShrink:0}}>
         <div style={{color:"#9b59b6",fontSize:13,fontFamily:"serif"}}>🏰 Castle — Level {levelIdx+1}</div>
         <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1071,9 +1080,9 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         </div>
       </div>
       <canvas ref={canvasRef} width={CASTLE_CANVAS} height={CASTLE_CANVAS}
-        style={{cursor:"pointer",border:"1px solid #3d2f18",display:"block",flexShrink:0}}
+        style={{cursor:"pointer",border:"1px solid #3d2f18",display:"block",flexShrink:0,...castleBox}}
         onClick={handleClick}/>
-      <div style={{marginTop:6,marginBottom:8,color:C.dim,fontSize:10,maxWidth:CASTLE_CANVAS+"px",flexShrink:0}}>{log[0]||"Explore the castle..."}</div>
+      <div style={{marginTop:6,marginBottom:8,color:C.dim,fontSize:10,width:castleBox.width,flexShrink:0}}>{log[0]||"Explore the castle..."}</div>
 
       {/* HERO INFO TAB — same collapsible panel as the island. */}
       <div style={{position:"fixed",top:"50%",right:0,transform:"translateY(-50%)",

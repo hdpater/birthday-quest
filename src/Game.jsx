@@ -82,6 +82,16 @@ const hitChance= (a,d) => a/(a+d);
 
 function randDmg(str,arm) { return Math.max(0, rng(0,str)-rng(0,arm)); }
 
+// Shared square-viewport sizing: shrinks to fit whichever of width/height is
+// tighter, using dvh (not vh) so mobile browser chrome that shows/hides
+// doesn't leave the reserved chrome (header/status bar) off-screen.
+// `reservedPx` is how much vertical space the screen's own header/footer
+// chrome needs outside the square itself.
+export function squareViewStyle(reservedPx){
+  const side=`min(100vw, calc(100dvh - ${reservedPx}px))`;
+  return {width:side,height:side,maxWidth:"100%",maxHeight:`calc(100dvh - ${reservedPx}px)`};
+}
+
 export function weaponAttacks(eq) {
   const {right_hand:rh, left_hand:lh} = eq;
   if (rh?.twoHanded) return [{label:rh.name, bonus:rh.strBonus, twoHanded:true}];
@@ -2711,10 +2721,7 @@ export default function Game(){
             display:"block",
             cursor:"crosshair",
             imageRendering:"pixelated",
-            width:"min(100vw, calc(100dvh - 36px))",
-            height:"min(100vw, calc(100dvh - 36px))",
-            maxWidth:"100%",
-            maxHeight:"calc(100dvh - 36px)",
+            ...squareViewStyle(36),
           }}/>
       </div>
 
