@@ -288,7 +288,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
       const disappear=[
         "With a thunderous crack, the guardian shatters into a thousand shards of light!",
         "The guardian lets out a final roar, then crumbles into dust and blows away on the wind.",
-        "A blinding flash — and the mermaid is gone, sinking silently into the sea.",
+        "A blinding flash — and the guardian is gone, fading silently into the mists.",
         "The guardian dissolves in a swirl of ancient magic, fading to nothing before your eyes.",
         "Roots retract, stone crumbles, water recedes — the guardian vanishes without a trace.",
       ][rng(0,4)];
@@ -2688,11 +2688,14 @@ export default function Game(){
   const hpColor=hpPct>60?"#2d8a4e":hpPct>25?"#c9a02b":"#c0392b";
 
   return(
-    <div style={{width:"100vw",height:"100vh",background:C.bg,color:C.text,fontFamily:"'Palatino Linotype',Palatino,'Book Antiqua',serif",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
+    <div style={{width:"100vw",height:"100dvh",background:C.bg,color:C.text,fontFamily:"'Palatino Linotype',Palatino,'Book Antiqua',serif",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",position:"relative"}}>
 
-      {/* MAP - canvas rendered, always square, fills smaller screen dimension */}
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",
-        background:C.bg,overflow:"hidden",minHeight:0}}>
+      {/* MAP - canvas rendered, always square, fills smaller screen dimension.
+          No flex:1/vertical-centering here — this wraps the canvas at its own
+          size so the status bar below sits flush against it instead of being
+          pushed down by leftover centered space (which, combined with mobile
+          browsers' shifting chrome, could push the status bar off-screen). */}
+      <div style={{display:"flex",justifyContent:"center",background:C.bg,overflow:"hidden"}}>
         <canvas ref={canvasRef} width={CANVAS} height={CANVAS}
           onClick={e=>{
             const rect=canvasRef.current.getBoundingClientRect();
@@ -2708,10 +2711,10 @@ export default function Game(){
             display:"block",
             cursor:"crosshair",
             imageRendering:"pixelated",
-            width:"min(100vw, calc(100vh - 36px))",
-            height:"min(100vw, calc(100vh - 36px))",
+            width:"min(100vw, calc(100dvh - 36px))",
+            height:"min(100vw, calc(100dvh - 36px))",
             maxWidth:"100%",
-            maxHeight:"100%",
+            maxHeight:"calc(100dvh - 36px)",
           }}/>
       </div>
 

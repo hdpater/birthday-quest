@@ -645,19 +645,13 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
             ctx.font=`${Math.round(S*0.65)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
             ctx.fillText(icon,px+S/2,py+S/2+1);
           }
-          // Stairs
-          if(wx===lv.stairs[0]&&wy===lv.stairs[1]){
-            ctx.font=`${Math.round(S*0.6)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
-            ctx.fillText(levelIdx===0?"🪜":"🐉",px+S/2,py+S/2+1);
-          }
+          // Stairs — icon itself is drawn oversized (3x3) in its own pass
+          // below, after every tile has been painted, same reason as keys/NPCs.
           // Entrance — on level 2, the start square doubles as an
-          // up-staircase back to level 1.
+          // up-staircase back to level 1 (its ladder icon is in the same
+          // oversized pass below).
           if(wx===lv.start[0]&&wy===lv.start[1]){
             ctx.fillStyle="#c9a84c44";ctx.fillRect(px,py,S,S);
-            if(levelIdx===1){
-              ctx.font=`${Math.round(S*0.6)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
-              ctx.fillText("🪜",px+S/2,py+S/2+1);
-            }
           }
           // Teleporter pads — invisible until teleportsActive has the
           // gating room (see dismissEnc's "teleport" action).
@@ -687,6 +681,30 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
           if(t>0){ctx.fillStyle=`rgba(0,0,0,${(t*0.75).toFixed(3)})`;ctx.fillRect(px,py,S,S);}
         } else {
           ctx.fillStyle="rgba(0,0,0,0.75)";ctx.fillRect(px,py,S,S);
+        }
+      }
+    }
+    // Stairs / entrance — drawn oversized (3x3 cells), same pattern as keys
+    // below, so the icon reads clearly instead of being squeezed into one cell.
+    {
+      const stairsKey=`${lv.stairs[0]},${lv.stairs[1]}`;
+      if(vis.has(stairsKey)||exploredRef.current.has(stairsKey)){
+        const svx=lv.stairs[0]-hx+CASTLE_HALF,svy=lv.stairs[1]-hy+CASTLE_HALF;
+        if(svx>=0&&svy>=0&&svx<CASTLE_VIEW&&svy<CASTLE_VIEW){
+          const spx=svx*CASTLE_CELL,spy=svy*CASTLE_CELL;
+          ctx.font=`${Math.round(CASTLE_CELL*3*0.8)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+          ctx.fillText(levelIdx===0?"🪜":"🐉",spx+CASTLE_CELL/2,spy+CASTLE_CELL/2);
+        }
+      }
+      if(levelIdx===1){
+        const startKey=`${lv.start[0]},${lv.start[1]}`;
+        if(vis.has(startKey)||exploredRef.current.has(startKey)){
+          const evx=lv.start[0]-hx+CASTLE_HALF,evy=lv.start[1]-hy+CASTLE_HALF;
+          if(evx>=0&&evy>=0&&evx<CASTLE_VIEW&&evy<CASTLE_VIEW){
+            const epx=evx*CASTLE_CELL,epy=evy*CASTLE_CELL;
+            ctx.font=`${Math.round(CASTLE_CELL*3*0.8)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+            ctx.fillText("🪜",epx+CASTLE_CELL/2,epy+CASTLE_CELL/2);
+          }
         }
       }
     }
