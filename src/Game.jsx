@@ -288,7 +288,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
       const disappear=[
         "With a thunderous crack, the guardian shatters into a thousand shards of light!",
         "The guardian lets out a final roar, then crumbles into dust and blows away on the wind.",
-        "A blinding flash — and the guardian is gone, sinking silently into the earth.",
+        "A blinding flash — and the mermaid is gone, sinking silently into the sea.",
         "The guardian dissolves in a swirl of ancient magic, fading to nothing before your eyes.",
         "Roots retract, stone crumbles, water recedes — the guardian vanishes without a trace.",
       ][rng(0,4)];
