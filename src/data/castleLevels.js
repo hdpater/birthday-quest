@@ -1,4 +1,4 @@
-import { gold, groundItem } from "../Game.jsx";
+import { gold, groundItem, magicItem } from "../Game.jsx";
 
 export const CASTLE_LEVELS = [
   {
@@ -37,6 +37,17 @@ export const CASTLE_LEVELS = [
       "43,6": [groundItem("fifth","gi_l1_43_6"), {...gold(25),uid:"gi_l1_43_6_gold"}],
       "55,6": [groundItem("fifth","gi_l1_55_6"), {...gold(35),uid:"gi_l1_55_6_gold"}],
       "40,18": [{...gold(29),uid:"gi_l1_40_18_gold"}],
+      // Magic drops, tiered to the monster guarding each room (tier =
+      // ceil(monster level/5), same formula as monster-loot drops).
+      "15,4": [{...magicItem("dark","potion","gi_l1_15_4_magic"),uid:"gi_l1_15_4_magic"}], // room_1, Court Jester Lv27 (t6)
+      "28,4": [{...magicItem("crystal","potion","gi_l1_28_4_magic"),uid:"gi_l1_28_4_magic"}], // room_2, Undead Guard Lv33 (t7)
+      "43,37": [{...magicItem("dark","wand","gi_l1_43_37_magic"),uid:"gi_l1_43_37_magic"}], // room_26, Undead Guard Lv33 (t7)
+      "36,28": [{...magicItem("shadow","potion","gi_l1_36_28_magic"),uid:"gi_l1_36_28_magic"}], // room_21, Zombie Count Lv39 (t8)
+      "5,25": [{...magicItem("crystal","wand","gi_l1_5_25_magic"),uid:"gi_l1_5_25_magic"}], // room_8, Ghoul Gentleman Lv39 (t8)
+      "29,30": [{...magicItem("mystic","potion","gi_l1_29_30_magic"),uid:"gi_l1_29_30_magic"}], // room_14, Bone Warlord Lv45 (t9)
+      "23,51": [{...magicItem("shadow","wand","gi_l1_23_51_magic"),uid:"gi_l1_23_51_magic"}], // room_18, Undead Governess Lv41 (t9)
+      "13,51": [{...magicItem("crystal","ring","gi_l1_13_51_magic"),uid:"gi_l1_13_51_magic"}], // room_17, Gaunt Chamberlain Lv44 (t9)
+      "3,51": [{...magicItem("shadow","ring","gi_l1_3_51_magic"),uid:"gi_l1_3_51_magic"}], // room_16, Undead Bishop Lv48 (t10)
     }),
     // Raw (pre-scale) torch positions — static, indestructible light sources.
     // Entries are [x, y, corner], corner one of "ul"/"ur"/"dl"/"dr" (default
@@ -203,8 +214,8 @@ export const CASTLE_LEVELS = [
       {"x": 17, "y": 9, "keyType": "purple"},
       {"x": 35, "y": 6, "keyType": "blue"},
       {"x": 36, "y": 20, "keyType": "yellow"},
-      {"x": 41, "y": 20, "keyType": "orange"},
-      {"x": 21, "y": 42, "keyType": "red"},
+      {"x": 12, "y": 50, "keyType": "orange"},
+      {"x": 3,  "y": 37, "keyType": "red"},
       {"x": 45, "y": 52, "keyType": "green"}
     ],
     rooms: [

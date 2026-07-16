@@ -121,7 +121,7 @@ function randomMagicItem(maxTier) {
     return magicItem(t, f, `magic_${Date.now()}_${Math.random()}`);
 }
 
-function magicItem(t, f, id) {
+export function magicItem(t, f, id) {
     return {id:id,name:`${t[0].toUpperCase()+t.slice(1)} ${f[0].toUpperCase()+f.slice(1)}`,type:"magic",form:f,magicType:t,cost:MAGIC_BASE[f]*MAGIC_MULT[t],color:MAGIC_COLOR[t],tier:magicTier(t,f)};
 }
 
@@ -1523,7 +1523,7 @@ function CastleDialogue({heroState,onDismiss,onEnter,onWin}){
         <div style={{color:"#9b59b6",fontSize:18,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>The Castle Gates</div>
         {canEnter?<>
           <div style={{background:"#1a1030",border:"1px solid #9b59b6",borderRadius:6,padding:"12px 14px",marginBottom:16,fontSize:13,lineHeight:1.8,color:"#d4c8e8",fontStyle:"italic"}}>
-            "You have the candles for Jon's birthday? Amazing! Come on in! You might be able to help with the other problem…"
+            "You have the candles for the Warlock's birthday? Amazing! Come on in! You might be able to help with our other problem…"
           </div>
           <div style={{color:"#6fcf97",fontSize:12,marginBottom:16}}>🕯 {candles} / 50 candles — all collected!</div>
           <button style={{...btnS("#9b59b6",false),padding:"12px 28px",fontSize:14}} onClick={onEnter}
@@ -1890,7 +1890,7 @@ function GameOverScreen({onRestart}){
       <div style={{background:"#1a0505",border:"2px solid #c0392b",borderRadius:10,padding:28,maxWidth:340,width:"95%",textAlign:"center"}}>
         <div style={{fontSize:48,marginBottom:8}}>💀</div>
         <div style={{color:"#c0392b",fontSize:18,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10}}>You Have Fallen</div>
-        <div style={{color:C.dim,fontSize:13,marginBottom:18}}>Your quest ends here. The candles remain unlit.</div>
+        <div style={{color:C.dim,fontSize:13,marginBottom:18}}>You wake up again in the Salty Cove Tavern...</div>
         <button style={btnS(C.red,false)} onClick={onRestart} onMouseEnter={e=>{e.currentTarget.style.background=C.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.red;}}>↺ Try Again</button>
       </div>
     </div>
