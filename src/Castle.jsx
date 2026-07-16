@@ -32,6 +32,21 @@ const KEY_COLORS_C = {
   yellow:"#f39c12",purple:"#8e44ad",orange:"#e67e22"
 };
 
+// Mobile browsers render 🗝 with the system's full-colour emoji font, which
+// ignores the CSS `color` used to tint each key — so on phones every
+// collected key shows up the same default grey instead of its key colour.
+// An SVG glyph filled with the given colour renders correctly everywhere.
+function KeyIcon({color,size=14,flip}){
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={flip?{transform:"scaleX(-1)"}:undefined}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M7 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2.5A1.5 1.5 0 1 1 7 10a1.5 1.5 0 0 1 0 3.5z"/>
+      <rect x="10.8" y="11" width="10.2" height="2" rx="0.5"/>
+      <rect x="16" y="13" width="2" height="3" rx="0.5"/>
+      <rect x="19" y="13" width="2" height="3.5" rx="0.5"/>
+    </svg>
+  );
+}
+
 // A door originally sat on one raw cell, exactly 1 wide, matching a 1-wide
 // corridor. Now that corridors are SCALE cells wide, a door must widen to
 // match — but only across the corridor's width, staying 1 cell thick along
@@ -844,6 +859,12 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         addCLog("🪜 You ascend to the first level...");
         goToLevel(0,{viaStairs:true});return;
       }
+      // Level 1's start square doubles as the castle entrance — stepping
+      // back onto it exits the castle, returning the hero to the island.
+      if(levelIdx===0&&nx===level.start[0]&&ny===level.start[1]){
+        pathRef.current=[];setTarget(null);
+        onExit(buildCastleSnapshot());return;
+      }
 
       // Teleporters — only active once teleportsActive has the gating room
       // (set by dismissEnc's "teleport" action). Stepping on either pad
@@ -1020,25 +1041,15 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
             <span style={{fontSize:11,color:C.dim}}>HP: <span style={{color:heroState.health>60?"#6fcf97":heroState.health>25?"#c9a02b":"#c0392b"}}>{heroState.health||0}%</span></span>
-            {heroKeys.filter(k=>k.level===0).map((k,i)=><span key={i} style={{fontSize:14,color:KEY_COLORS_C[k.keyType]||"#fff"}}>🗝</span>)}
+            {heroKeys.filter(k=>k.level===0).map((k,i)=><KeyIcon key={i} color={KEY_COLORS_C[k.keyType]||"#fff"}/>)}
             {iceCrystal&&<span style={{fontSize:14}} title="Ice Crystal">🧊</span>}
           </div>
           {/* Level 2 keys — same icon, mirrored, in their own row. Only
               these unlock level 2 doors; level 1 keys (row above) don't. */}
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            {heroKeys.filter(k=>k.level===1).map((k,i)=><span key={i} style={{fontSize:14,color:KEY_COLORS_C[k.keyType]||"#fff",display:"inline-block",transform:"scaleX(-1)"}}>🗝</span>)}
+            {heroKeys.filter(k=>k.level===1).map((k,i)=><KeyIcon key={i} color={KEY_COLORS_C[k.keyType]||"#fff"} flip/>)}
             {blackBelt&&<span style={{fontSize:14}} title="Black Belt">🥋</span>}
           </div>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          {/* Debug-only: re-seeds this level's rooms/doors/keys/encounters
-              straight from CASTLE_LEVELS, bypassing the in-session castle
-              state that otherwise persists stale data (e.g. a newly-added
-              fire/torch/encounter) across exit/re-entry. Resets the level
-              like a fresh entry — hero position, opened doors, fog of war,
-              and collected keys for THIS level all reset too. */}
-          <button style={{padding:"4px 12px",background:"transparent",border:"1px solid #7a6a4a",color:"#7a6a4a",cursor:"pointer",fontSize:10,borderRadius:3}} onClick={()=>goToLevel(levelIdx)}>🔄 Reload Level Data</button>
-          <button style={{padding:"4px 12px",background:"transparent",border:"1px solid #7a6a4a",color:"#7a6a4a",cursor:"pointer",fontSize:10,borderRadius:3}} onClick={()=>onExit(buildCastleSnapshot())}>⬆ Exit Castle</button>
         </div>
       </div>
       <canvas ref={canvasRef} width={CASTLE_CANVAS} height={CASTLE_CANVAS}

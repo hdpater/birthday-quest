@@ -48,11 +48,11 @@ function spawnMonster(x, y) {
 // ── Locations ─────────────────────────────────────────────────────────────────
 import { BUILDINGS } from "./data/buildings.js";
 import { GUARDIANS } from "./data/buildings.js";
-import { DRAGON_POS } from "./data/monsters.js";
+import { TOURNAMENT_POS } from "./data/monsters.js";
 
 const buildingAt = (x,y) => BUILDINGS.find(b=>b.x===x&&b.y===y)||null;
 const guardianAt = (x,y) => GUARDIANS.find(g=>g.x===x&&g.y===y)||null;
-const dragonAt   = (x,y) => (DRAGON_POS.x===x&&DRAGON_POS.y===y)?DRAGON_POS:null;
+const tournamentAt = (x,y) => (TOURNAMENT_POS.x===x&&TOURNAMENT_POS.y===y)?TOURNAMENT_POS:null;
 import { GUARDIAN_RIDDLES } from "./data/buildings.js";
 import { GUARDIAN_ANGRY } from "./data/buildings.js";
 
@@ -129,8 +129,9 @@ const computeChecksum=(data)=>{
   return(h>>>0).toString(16);
 };
 
-function generateMerchantStock() {
-  const pool=[...FOOD,...ARMOUR_ITEMS,...WEAPONS];
+function generateMerchantStock(tier) {
+  const inBand=i=>i.tier>=tier-1&&i.tier<=tier;
+  const pool=[...FOOD,...ARMOUR_ITEMS.filter(inBand),...WEAPONS.filter(inBand)];
   const shuffled=[...pool].sort(()=>Math.random()-0.5);
   const items=shuffled.slice(0,rng(4,8)).map(i=>({...i,uid:Date.now()+Math.random(),price:varyPrice(i.cost??i.price)}));
     if(Math.random()<0.5){
@@ -271,7 +272,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
   const submit=()=>{
     const correct=riddle.a.includes(answer.trim().toLowerCase());
     if(correct){
-      setHeroState(h=>({...h,gold:h.gold+100,candles:h.candles+50}));
+      setHeroState(h=>({...h,gold:h.gold+200,candles:h.candles+5}));
       if(onDefeated) onDefeated(guardian.id);
       const disappear=[
         "With a thunderous crack, the guardian shatters into a thousand shards of light!",
@@ -280,7 +281,7 @@ function GuardianEncounter({guardian,setHeroState,onDismiss,onDefeated}){
         "The guardian dissolves in a swirl of ancient magic, fading to nothing before your eyes.",
         "Roots retract, stone crumbles, water recedes — the guardian vanishes without a trace.",
       ][rng(0,4)];
-      setResult({correct:true,msg:`${disappear} +100 gold, +5 candles.`});
+      setResult({correct:true,msg:`${disappear} +200 gold, +5 candles.`});
     } else {
       const dmg=rng(1,25);
       setHeroState(h=>({...h,health:Math.max(0,h.health-dmg)}));
@@ -2120,7 +2121,7 @@ export default function Game(){
   const [fadingGuardian,setFadingGuardian]=useState(null); // id of guardian currently animating out
   const [heroPos,setHeroPos]=useState({x:23,y:14});
   const [target,setTarget]=useState(null);
-  const [log,setLog]=useState(["Your quest begins at The Salty Cove Tavern. Collect all 50 candles!"]);
+  const [log,setLog]=useState(["Your quest begins at The Salty Cove Tavern."]);
   const [keyOpen,setKeyOpen]=useState(false);
   const [modal,setModal]=useState(null); // {type, data}
   const [merchantStock,setMerchantStock]=useState(null);
@@ -2316,8 +2317,8 @@ export default function Game(){
     }
 
     // ── Dragon (3×3 starburst) ────────────────────────────────────────────────
-    if(inView(DRAGON_POS.x,DRAGON_POS.y)){
-      const [px,py]=vp(DRAGON_POS.x,DRAGON_POS.y);
+    if(inView(TOURNAMENT_POS.x,TOURNAMENT_POS.y)){
+      const [px,py]=vp(TOURNAMENT_POS.x,TOURNAMENT_POS.y);
       const spikes=8,outerR=R*0.95,innerR=R*0.40;
       // Glow
       const dg=ctx.createRadialGradient(px,py,innerR,px,py,outerR*1.2);
@@ -2559,7 +2560,7 @@ export default function Game(){
     const[nx,ny]=pathRef.current.shift();
 
     // Grand Tournament?
-    if(dragonAt(nx,ny)){stopAt(nx,ny);
+    if(tournamentAt(nx,ny)){stopAt(nx,ny);
       const remaining=TOURNAMENT_FIGHTERS.filter(f=>!defeatedTournamentRef.current.has(f.id));
       if(remaining.length>0){addLog(`⚔ You enter the Grand Tournament! Next: ${remaining[0].name}`);setModal({type:"tournament"});}
       else{addLog("🏆 The Grand Tournament is complete! All champions defeated.");}
@@ -2571,7 +2572,9 @@ export default function Game(){
     const bld=buildingAt(nx,ny);
     if(bld){stopAt(nx,ny);addLog(`You enter ${bld.name}.`);setModal({type:"building",data:bld});return;}
     // Merchant? (0.2%)
-    if(Math.random()<0.002){stopAt(nx,ny);addLog("A wandering merchant appears!");setMerchantStock(generateMerchantStock());setModal({type:"merchant"});return;}
+    if(Math.random()<0.002){stopAt(nx,ny);addLog("A wandering merchant appears!");
+      const merchantTier=Math.min(5,Math.ceil(monLvl(nx,ny)/5));
+      setMerchantStock(generateMerchantStock(merchantTier));setModal({type:"merchant"});return;}
     // Monster? (1%)
     if(Math.random()<0.01){
       const count=Math.random()<0.2?rng(2,4):1;
@@ -2727,18 +2730,9 @@ export default function Game(){
       {modal?.type==="combat"&&
         <CombatScreen
           monster={modal.data} heroState={heroState} setHeroState={setHeroState}
-          isDragon={modal.data.isDragon}
           addLog={addLog}
           groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos}
-          onVictory={(mon)=>{
-            if(mon.isDragon){
-              setHeroState(h=>({...h,candles:h.candles+10}));
-              addLog("🐉 The Golden Dragon is defeated! +10 candles!");
-              setModal({type:"dragon_victory"});
-            } else {
-              setModal(null);
-            }
-          }}
+          onVictory={()=>setModal(null)}
           onDefeat={()=>{setModal(null);setGameState("dead");}}
           onFlee={()=>{setModal(null);addLog("You flee to safety.");}}/>}
       {modal?.type==="multi_combat"&&
@@ -2750,23 +2744,6 @@ export default function Game(){
           onVictory={()=>setModal(null)}
           onDefeat={()=>{setModal(null);setGameState("dead");}}
           onFlee={()=>{setModal(null);addLog("You flee to safety.");}}/>}
-      {modal?.type==="dragon_victory"&&(
-        <div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-          <div style={{background:"#1a0f05",border:"2px solid #ff6b00",borderRadius:12,maxWidth:420,width:"90%",overflow:"hidden",textAlign:"center"}}>
-            <img src={DRAGON_IMG} alt="Dragon" style={{width:"100%",maxHeight:220,objectFit:"cover"}}/>
-            <div style={{padding:"20px 24px"}}>
-              <div style={{color:"#ff6b00",fontSize:18,fontWeight:"bold",marginBottom:12}}>🐉 The Dragon is Slain!</div>
-              <div style={{color:"#e8dcc8",fontSize:13,lineHeight:1.6,marginBottom:20}}>
-                You have defeated the great Golden Dragon and have found <strong style={{color:"#f1c40f"}}>10 candles</strong>!
-              </div>
-              <button style={{padding:"10px 32px",background:"#ff6b00",border:"none",borderRadius:5,color:"#fff",fontSize:14,cursor:"pointer",fontWeight:"bold"}}
-                onClick={()=>setModal(null)}>
-                Claim your glory
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {modal?.type==="ground"&&modal.data&&(
         <GroundItemsDialogue
           items={groundItems[modal.data.key]||[]}

@@ -29,4 +29,4 @@ export const TOURNAMENT_FIGHTERS = [
      {name:"Poison Dagger",slot:"either",strBonus:6,type:"weapon",poisonOnHit:true,uid:"greegan_dagger"},
    ]},
 ];
-export const DRAGON_POS = {x:219,y:243};
+export const TOURNAMENT_POS = {x:219,y:243};
