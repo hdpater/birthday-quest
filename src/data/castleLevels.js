@@ -338,6 +338,17 @@ export const CASTLE_LEVELS = [
       "5,55": [groundItem("sevenup","gi_l2_5_55"), {...gold(68),uid:"gi_l2_5_55_gold"}],
       "53,32": [groundItem("butter","gi_l2_53_32"), {...gold(69),uid:"gi_l2_53_32_gold"}],
       "101,107": [{name:"Ninja To",slot:"either",strBonus:8,type:"weapon",poisonOnHit:true,uid:"ninja_to"}, {...gold(1021),uid:"gi_l2_101_107_gold"}],
+      // Magic drops, tiered to the monster guarding each room (tier =
+      // ceil(monster level/5), same formula as monster-loot drops).
+      "3,11": [{...magicItem("dark","potion","gi_l2_3_11_magic"),uid:"gi_l2_3_11_magic"}], // room_1, Court Jester Lv27 (t6)
+      "22,22": [{...magicItem("dark","potion","gi_l2_22_22_magic"),uid:"gi_l2_22_22_magic"}], // room_6, Pale Duchess Lv30 (t6)
+      "11,3": [{...magicItem("crystal","potion","gi_l2_11_3_magic"),uid:"gi_l2_11_3_magic"}], // room_2, Undead Guard Lv33 (t7)
+      "22,12": [{...magicItem("dark","wand","gi_l2_22_12_magic"),uid:"gi_l2_22_12_magic"}], // room_5, Necrobard Lv33 (t7)
+      "35,26": [{...magicItem("shadow","potion","gi_l2_35_26_magic"),uid:"gi_l2_35_26_magic"}], // room_10, Zombie Count Lv39 (t8)
+      "26,40": [{...magicItem("crystal","wand","gi_l2_26_40_magic"),uid:"gi_l2_26_40_magic"}], // room_19, Grey Baroness Lv36 (t8)
+      "22,32": [{...magicItem("mystic","potion","gi_l2_22_32_magic"),uid:"gi_l2_22_32_magic"}], // room_7, Executioner Lv41 (t9)
+      "57,54": [{...magicItem("shadow","wand","gi_l2_57_54_magic"),uid:"gi_l2_57_54_magic"}], // room_26, Gaunt Chamberlain Lv44 (t9)
+      "49,40": [{...magicItem("shadow","ring","gi_l2_49_40_magic"),uid:"gi_l2_49_40_magic"}], // room_24, Undead Marchioness Lv47 (t10)
     }),
     torches: [
       //room0
