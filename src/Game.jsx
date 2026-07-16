@@ -137,7 +137,11 @@ const computeChecksum=(data)=>{
 };
 
 function generateMerchantStock(tier) {
-  const inBand=i=>i.tier>=tier-1&&i.tier<=tier;
+  // Gear tops out at tier 5, unlike magic (which now goes higher) — clamp
+  // separately so a high-tier merchant's gear band doesn't land entirely
+  // above every weapon/armour's tier and leave the stock empty.
+  const gearTier=Math.min(5,tier);
+  const inBand=i=>i.tier>=gearTier-1&&i.tier<=gearTier;
   const pool=[...FOOD,...ARMOUR_ITEMS.filter(inBand),...WEAPONS.filter(inBand)];
   const shuffled=[...pool].sort(()=>Math.random()-0.5);
   const items=shuffled.slice(0,rng(4,8)).map(i=>({...i,uid:Date.now()+Math.random(),price:varyPrice(i.cost??i.price)}));
@@ -692,8 +696,10 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
       }
       const gold=rng(5+mon.level,10+mon.level*4);
       const lootItems=[];
-      // Tier scales with monster level: lvl1-5→t1, 6-10→t2, 11-15→t3, 16-20→t4, 21+→t5
-      const monTier=Math.min(5,Math.ceil((mon.level||1)/5));
+      // Tier scales with monster level: lvl1-5→t1, 6-10→t2, etc. Uncapped —
+      // gear naturally saturates at tier 5 (its highest item), but this lets
+      // high-level monsters roll higher-tier magic drops (see MAGIC_TYPE_TIER).
+      const monTier=Math.ceil((mon.level||1)/5);
       if(Math.random()<0.75){
         // Allow items from tier-1 to tier, weighted toward current tier
         const pool=[...FOOD,...WEAPONS.filter(i=>i.tier<=monTier),...ARMOUR_ITEMS.filter(i=>i.tier<=monTier)];
@@ -781,6 +787,9 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
       if(comps.includes("fire")){const d=rng(1,5);m.health=Math.max(0,m.health-d);lines.push(`${wand.name}: ${d} fire dmg.`);}
       if(comps.includes("lightning")){const d=rng(1,3);m.skill=Math.max(1,m.skill-d);lines.push(`${wand.name}: -${d} monster skill.`);}
       if(comps.includes("iron")){const d=rng(1,3);m.strength=Math.max(1,m.strength-d);lines.push(`${wand.name}: -${d} monster strength.`);}
+      if(comps.includes("dark")){const d=rng(1,5)*10;m.health=Math.max(0,m.health-d);lines.push(`${wand.name}: ${d} dark dmg.`);}
+      if(comps.includes("crystal")){const d=rng(1,3)*10;m.strength=Math.max(1,m.strength-d);lines.push(`${wand.name}: -${d} monster strength.`);}
+      if(comps.includes("shadow")){const d=rng(1,3)*10;m.skill=Math.max(1,m.skill-d);lines.push(`${wand.name}: -${d} monster skill.`);}
       if(m.health<=0) wonCombat=true;
       return m;
     });
@@ -821,6 +830,22 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
 	    reverts.baseStrength=h.baseStrength;
 	    nh.baseStrength=(h.baseStrength)+d;
 	    addCombatLog(`${pot.name}: +${d} strength.`);
+	}
+	if(comps.includes("dark")){
+	    const d=(rng(1,5)+3)*10;
+	    reverts.health=h.health;
+	    nh.health=h.health+d;
+	    addCombatLog(`${pot.name}: +${d} health.`);
+	}
+	if(comps.includes("crystal")){
+	    const d=rng(1,5);
+	    nh.baseStrength=h.baseStrength+d;
+	    addCombatLog(`${pot.name}: +${d} strength (permanent).`);
+	}
+	if(comps.includes("shadow")){
+	    const d=rng(1,5);
+	    nh.baseSkill=h.baseSkill+d;
+	    addCombatLog(`${pot.name}: +${d} skill (permanent).`);
 	}
       nh.inventory=h.inventory.filter(i=>i.id!==pot.id);
       return nh;
@@ -957,7 +982,7 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
       const lootItems=[];
       for(const m of allMons){
         gold+=rng(5+m.level,10+m.level*4);
-        const monTier=Math.min(5,Math.ceil((m.level||1)/5));
+        const monTier=Math.ceil((m.level||1)/5);
         if(Math.random()<0.75){
           const pool=[...FOOD,...WEAPONS.filter(i=>i.tier<=monTier),...ARMOUR_ITEMS.filter(i=>i.tier<=monTier)];
           const weighted=pool.flatMap(i=>i.tier?(Array(i.tier).fill(i)):[i]);
@@ -1042,6 +1067,9 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
         if(comps.includes("fire")){const d=rng(1,5);nm.health=Math.max(0,nm.health-d);lines.push(`${wand.name}: ${d} fire dmg on ${nm.name}.`);}
         if(comps.includes("lightning")){const d=rng(1,3);nm.skill=Math.max(1,nm.skill-d);lines.push(`${wand.name}: -${d} skill on ${nm.name}.`);}
         if(comps.includes("iron")){const d=rng(1,3);nm.strength=Math.max(1,nm.strength-d);lines.push(`${wand.name}: -${d} str on ${nm.name}.`);}
+        if(comps.includes("dark")){const d=rng(1,5)*10;nm.health=Math.max(0,nm.health-d);lines.push(`${wand.name}: ${d} dark dmg on ${nm.name}.`);}
+        if(comps.includes("crystal")){const d=rng(1,3)*10;nm.strength=Math.max(1,nm.strength-d);lines.push(`${wand.name}: -${d} str on ${nm.name}.`);}
+        if(comps.includes("shadow")){const d=rng(1,3)*10;nm.skill=Math.max(1,nm.skill-d);lines.push(`${wand.name}: -${d} skill on ${nm.name}.`);}
         if(nm.health<=0) wonCombat=true;
         return nm;
       });
@@ -1066,6 +1094,9 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
       if(comps.includes("fire")){const d=rng(1,5);reverts.health=h.health;nh.health=h.health+d;addCombatLog(`${pot.name}: +${d} health.`);}
       if(comps.includes("lightning")){const d=rng(1,5);reverts.baseSkill=h.baseSkill;nh.baseSkill=h.baseSkill+d;addCombatLog(`${pot.name}: +${d} skill.`);}
       if(comps.includes("iron")){const d=rng(1,5);reverts.baseStrength=h.baseStrength;nh.baseStrength=h.baseStrength+d;addCombatLog(`${pot.name}: +${d} strength.`);}
+      if(comps.includes("dark")){const d=rng(1,5)*10;reverts.health=h.health;nh.health=h.health+d;addCombatLog(`${pot.name}: +${d} health.`);}
+      if(comps.includes("crystal")){const d=rng(1,5);nh.baseStrength=h.baseStrength+d;addCombatLog(`${pot.name}: +${d} strength (permanent).`);}
+      if(comps.includes("shadow")){const d=rng(1,5);nh.baseSkill=h.baseSkill+d;addCombatLog(`${pot.name}: +${d} skill (permanent).`);}
       nh.inventory=h.inventory.filter(i=>i.id!==pot.id);
       return nh;
     });
@@ -2585,7 +2616,7 @@ export default function Game(){
     if(bld){stopAt(nx,ny);addLog(`You enter ${bld.name}.`);setModal({type:"building",data:bld});return;}
     // Merchant? (0.2%)
     if(Math.random()<0.002){stopAt(nx,ny);addLog("A wandering merchant appears!");
-      const merchantTier=Math.min(5,Math.ceil(monLvl(nx,ny)/5));
+      const merchantTier=Math.ceil(monLvl(nx,ny)/5);
       setMerchantStock(generateMerchantStock(merchantTier));setModal({type:"merchant"});return;}
     // Monster? (1%)
     if(Math.random()<0.01){

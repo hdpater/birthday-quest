@@ -42,15 +42,15 @@ export const FOOD = [
   {id:"coffee", name:"Hot Can of Coffee",type:"food",price:20,   heal:60, emoji:"☕"},
   {id:"sevenup",name:"Cherry 7-up",      type:"food",price:50,   heal:100,emoji:"🥤"},
 ];
-export const MAGIC_TYPES_LIST = ["fire","lightning","iron","green","sun","frost","arcane"];
+export const MAGIC_TYPES_LIST = ["fire","lightning","iron","green","sun","frost","arcane","dark","crystal","shadow","mystic"];
 export const MAGIC_FORMS_LIST = ["wand","potion","ring"];
 export const MAGIC_BASE  = {wand:25, potion:10, ring:1000};
-export const MAGIC_MULT  = {fire:1,lightning:1,iron:1,green:4,sun:4,frost:4,arcane:20};
-export const MAGIC_COLOR = {fire:"#e74c3c",lightning:"#f39c12",iron:"#95a5a6",green:"#27ae60",sun:"#f1c40f",frost:"#2980b9",arcane:"#9b59b6"};
-export const MAGIC_COMPS = {fire:["fire"],lightning:["lightning"],iron:["iron"],green:["fire","iron"],sun:["lightning","fire"],frost:["lightning","iron"],arcane:["fire","lightning","iron"]};
+export const MAGIC_MULT  = {fire:1,lightning:1,iron:1,green:4,sun:4,frost:4,arcane:20,dark:100,crystal:200,shadow:500,mystic:1000};
+export const MAGIC_COLOR = {fire:"#e74c3c",lightning:"#f39c12",iron:"#95a5a6",green:"#27ae60",sun:"#f1c40f",frost:"#2980b9",arcane:"#9b59b6",dark:"#4b0082",crystal:"#48dbfb",shadow:"#2c2c54",mystic:"#e056fd"};
+export const MAGIC_COMPS = {fire:["fire"],lightning:["lightning"],iron:["iron"],green:["fire","iron"],sun:["lightning","fire"],frost:["lightning","iron"],arcane:["fire","lightning","iron"],dark:["dark"],crystal:["crystal"],shadow:["shadow"],mystic:["dark","crystal","shadow"]};
 // Tier (1-5, matching WEAPONS/ARMOUR_ITEMS) = type tier + form tier. Type
 // tier tracks MAGIC_COMPS length (single-component types are weakest,
 // arcane's triple-component is strongest); form tier tracks how permanent
 // the effect is (a potion is one-shot, a ring is worn forever).
-export const MAGIC_TYPE_TIER = {fire:1,lightning:1,iron:1,green:2,sun:2,frost:2,arcane:3};
+export const MAGIC_TYPE_TIER = {fire:1,lightning:1,iron:1,green:2,sun:2,frost:2,arcane:3,dark:6,crystal:7,shadow:8,mystic:9};
 export const MAGIC_FORM_TIER = {potion:0,wand:1,ring:2};
