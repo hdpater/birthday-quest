@@ -1882,7 +1882,7 @@ function WinScreen({onContinue}){
           <div style={{fontSize:60,marginBottom:12}}>🎂🕯🎉</div>
           <div style={{color:"#f1c40f",fontSize:22,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Happy Birthday, Jon!</div>
           <div style={{color:"#e8d4b0",fontSize:14,lineHeight:1.8,marginBottom:20,fontStyle:"italic"}}>
-            The dragon is defeated and your memory unclouds! You have gathered all 50 candles and brought them to the castle for your own birthday! The birthday celebration can begin! May your 50th year be full of adventure, wisdom, and treasure.
+            The dragon slumps defeated and then looks up at you. "Welcome back Warlock Jon," he grins and your memory unclouds! You have gathered all 50 candles and brought them to the castle for your own birthday! The birthday celebration can begin! May your 50th year be full of adventure, wisdom, and treasure.
           </div>
           <div style={{fontSize:32,marginBottom:20}}>🐉 ⚔ 🏰</div>
           <button style={{padding:"10px 28px",background:"transparent",border:"1.5px solid #f1c40f",color:"#f1c40f",fontSize:13,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",borderRadius:3}}
