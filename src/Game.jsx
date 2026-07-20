@@ -667,7 +667,7 @@ function ItemPickupPanel({mode,
 }
 
 // ── Combat Screen ─────────────────────────────────────────────────────────────
-export function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,isCastle,fixedLoot,fixedCandles,onVictory,onDefeat,onFlee,addLog,groundItems,setGroundItems,heroPos}){
+export function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,isCastle,fixedLoot,fixedGold,fixedCandles,onVictory,onDefeat,onFlee,addLog,groundItems,setGroundItems,heroPos}){
   const [mon,setMon]=useState({...monster,health:monster.maxHealth||100});
   const [potionReverts,setPotionReverts]=useState({});
   const [combatLog,setCombatLog]=useState(monster.dialogue
@@ -722,6 +722,15 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
         const lootItems=(fixedLoot||[]).map((l,i)=>({...l,uid:l.uid||Date.now()+i}));
         setLoot({gold:0,items:lootItems,levelUp:false,levelUpStat:null,candles:fixedCandles||0});
         setHeroState(h=>({...h,candles:(h.candles||0)+(fixedCandles||0),inventory:[...h.inventory,...lootItems]}));
+        return;
+      }
+      if(isDragon&&fixedLoot){
+        // The Golden Dragon drops a fixed hoard (see the Fight handler in
+        // Castle.jsx) instead of the usual random gold/item roll.
+        const lootItems=fixedLoot.map((l,i)=>({...l,uid:l.uid||Date.now()+i}));
+        const dragonGold=fixedGold||0;
+        setLoot({gold:dragonGold,items:lootItems,levelUp:false,levelUpStat:null});
+        setHeroState(h=>({...h,gold:h.gold+dragonGold,inventory:[...h.inventory,...lootItems]}));
         return;
       }
       const gold=rng(5+mon.level,10+mon.level*4);

@@ -1,5 +1,5 @@
 import React from "react";
-import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX, squareViewStyle } from "./Game.jsx";
+import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX, squareViewStyle, magicItem } from "./Game.jsx";
 import { NPC_IMG, DRAGON_IMG } from "./data/images.js";
 import { CASTLE_LEVELS } from "./data/castleLevels.js";
 import StealthGame from "./StealthGame.tsx";
@@ -154,6 +154,19 @@ function lastPassableAlongLine(sx,sy,tx,ty,stepOk){
     x=nx;y=ny;
   }
   return {x,y};
+}
+
+// The Golden Dragon's hoard — fixed, not the usual random gold/item roll
+// (see the isDragon branch in CombatScreen's endCombat). Built fresh each
+// fight so a re-fight after fleeing gets its own uids.
+function dragonHoard(){
+  const seed=Date.now();
+  return [
+    magicItem("mystic","ring",`dragon_ring_${seed}`),
+    magicItem("crystal","potion",`dragon_potion_${seed}`),
+    {id:"party_hat",name:"Party Hat",slot:"head",armourBonus:12,cost:5000,tier:5,
+      desc:"A jaunty conical hat, somehow deflects blows.",uid:`dragon_hat_${seed}`},
+  ];
 }
 
 function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,saves,saveMsg,onSaveGame,onLoadGame,onDeleteSave,hasIceCrystal,onLaunchStealth,hasBlackBelt,onLaunchNinja,onDismiss}){
@@ -1247,7 +1260,8 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         onFight={()=>{
           const{enc,fromPos}=dragonIntroModal;
           setDragonIntroModal(null);
-          setCombatModal({monster:{...enc,maxHealth:100,strength:100,skill:100,armour:100,attacks:2,level:100,isDragon:true},fromPos});
+          setCombatModal({monster:{...enc,maxHealth:100,strength:100,skill:100,armour:100,attacks:2,level:100,isDragon:true},fromPos,
+            fixedGold:50000,fixedLoot:dragonHoard()});
         }}
         onFlee={()=>{
           // Same as backing out of CombatScreen mid-fight: return to the
@@ -1265,6 +1279,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         monster={combatModal.monster}
         heroState={heroState} setHeroState={setHeroState}
         isDragon={combatModal.monster.isDragon}
+        fixedLoot={combatModal.fixedLoot} fixedGold={combatModal.fixedGold}
         isCastle={true}
         addLog={addCLog}
         groundItems={groundItems} setGroundItems={setGroundItemsTracked} heroPos={heroPos}
