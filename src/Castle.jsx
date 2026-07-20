@@ -295,12 +295,18 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
   const heroKeysRef=React.useRef(initialState?.heroKeys ?? []);
   React.useEffect(()=>{heroKeysRef.current=heroKeys;},[heroKeys]);
   const [groundKeys,setGroundKeys]=React.useState(()=>initialLevelCache?.groundKeys ?? level.keys);
+  const groundKeysRef=React.useRef(groundKeys);
+  React.useEffect(()=>{groundKeysRef.current=groundKeys;},[groundKeys]);
   const [groundItems,setGroundItems]=React.useState(()=>initialLevelCache?.groundItems ?? {...level.groundItemsInit});
+  const groundItemsRef=React.useRef(groundItems);
+  React.useEffect(()=>{groundItemsRef.current=groundItems;},[groundItems]);
   const [groundModal,setGroundModal]=React.useState(null);
   const [encounters,setEncounters]=React.useState(()=>initialLevelCache?.encounters ?? level.encounters);
   const encRef=React.useRef(encounters);
   React.useEffect(()=>{encRef.current=encounters;},[encounters]);
   const [defeatedRooms,setDefeatedRooms]=React.useState(()=>new Set(initialLevelCache?.defeatedRooms ?? []));
+  const defeatedRoomsRef=React.useRef(defeatedRooms);
+  React.useEffect(()=>{defeatedRoomsRef.current=defeatedRooms;},[defeatedRooms]);
   const [encModal,setEncModal]=React.useState(null);
   const [target,setTarget]=React.useState(null);
   const pathRef=React.useRef([]);
@@ -318,8 +324,14 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
 
   // Secret doors, teleporters, fire state
   const [secretRevealed,setSecretRevealed]=React.useState(()=>new Set(initialLevelCache?.secretRevealed ?? []));
+  const secretRevealedRef=React.useRef(secretRevealed);
+  React.useEffect(()=>{secretRevealedRef.current=secretRevealed;},[secretRevealed]);
   const [teleportsActive,setTeleportsActive]=React.useState(()=>new Set(initialLevelCache?.teleportsActive ?? []));
+  const teleportsActiveRef=React.useRef(teleportsActive);
+  React.useEffect(()=>{teleportsActiveRef.current=teleportsActive;},[teleportsActive]);
   const [fireCleared,setFireCleared]=React.useState(()=>new Set(initialLevelCache?.fireCleared ?? []));  // set of room ids with fire cleared
+  const fireClearedRef=React.useRef(fireCleared);
+  React.useEffect(()=>{fireClearedRef.current=fireCleared;},[fireCleared]);
   const [combatModal,setCombatModal]=React.useState(null);
   const [multiCombatModal,setMultiCombatModal]=React.useState(null);
   // One-off castle-wide reward, awarded by winning the Stealth mini-game
@@ -327,26 +339,34 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
   // heroKeys, not added to heroState.inventory. Not per-level, so goToLevel
   // never resets it.
   const [iceCrystal,setIceCrystal]=React.useState(()=>initialState?.iceCrystal ?? false);
+  const iceCrystalRef=React.useRef(iceCrystal);
+  React.useEffect(()=>{iceCrystalRef.current=iceCrystal;},[iceCrystal]);
   const [playingStealth,setPlayingStealth]=React.useState(false);
   // Same one-off header-icon pattern, awarded by winning the Ninja Dummy
   // mini-game (see the Acolyte's NPC entry, room_13/level 2).
   const [blackBelt,setBlackBelt]=React.useState(()=>initialState?.blackBelt ?? false);
+  const blackBeltRef=React.useRef(blackBelt);
+  React.useEffect(()=>{blackBeltRef.current=blackBelt;},[blackBelt]);
   const [playingNinja,setPlayingNinja]=React.useState(false);
 
   const C={bg:"#0d0a06",panel:"#1a1510",border:"#3d2f18",gold:"#c9a84c",text:"#e8dcc8",dim:"#7a6a4a",red:"#c0392b",green:"#2d8a4e",blue:"#2e6da4"};
 
   // Snapshots the live per-level state (the pieces cached by levelCacheRef)
   // for whichever level is currently active, so it can be written into the
-  // cache before switching away from it or before saving.
+  // cache before switching away from it or before saving. Reads from the
+  // *Ref mirrors, not the useState values directly — this is called from
+  // deep inside the walk-step timer chain (see goToLevel), whose closure
+  // can be one or more renders behind the latest setEncounters/setGroundKeys/
+  // etc. call; the refs are kept in sync via effects and are always current.
   const snapshotCurrentLevel=()=>({
-    closedBarriers:new Set(closedBarriers),
-    groundKeys,
-    groundItems,
-    encounters,
-    defeatedRooms:new Set(defeatedRooms),
-    secretRevealed:new Set(secretRevealed),
-    teleportsActive:new Set(teleportsActive),
-    fireCleared:new Set(fireCleared),
+    closedBarriers:new Set(closedBarriersRef.current),
+    groundKeys:groundKeysRef.current,
+    groundItems:groundItemsRef.current,
+    encounters:encRef.current,
+    defeatedRooms:new Set(defeatedRoomsRef.current),
+    secretRevealed:new Set(secretRevealedRef.current),
+    teleportsActive:new Set(teleportsActiveRef.current),
+    fireCleared:new Set(fireClearedRef.current),
     explored:new Set(exploredRef.current),
   });
 
@@ -373,10 +393,10 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
     }
     return {
       levelIdx,
-      heroPos,
-      heroKeys,
-      iceCrystal,
-      blackBelt,
+      heroPos:heroPosRef.current,
+      heroKeys:heroKeysRef.current,
+      iceCrystal:iceCrystalRef.current,
+      blackBelt:blackBeltRef.current,
       levels,
     };
   };
@@ -901,7 +921,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
       // Door interaction
       const d=level.barrierDefs.find(d=>nx>=d.rect.x0&&nx<d.rect.x1&&ny>=d.rect.y0&&ny<d.rect.y1);
       if(d&&closedBarriersRef.current.has(d.id)){
-        if(d.isSecret&&!secretRevealed.has(d.id)){pathRef.current=[];setTarget(null);return;}
+        if(d.isSecret&&!secretRevealedRef.current.has(d.id)){pathRef.current=[];setTarget(null);return;}
         const hasKey=k=>heroKeysRef.current.some(hk=>hk.keyType===k&&hk.level===levelIdx);
         if(d.locked&&!hasKey(d.locked)){
           addCLog(`🔒 Need the ${d.locked} key!`);pathRef.current=[];setTarget(null);return;
@@ -915,7 +935,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
       }
 
       // Key pickup
-      const gk=groundKeys.find(k=>k.x===nx&&k.y===ny);
+      const gk=groundKeysRef.current.find(k=>k.x===nx&&k.y===ny);
       if(gk){
         const newKey={keyType:gk.keyType,level:levelIdx};
         setHeroKeys(hk=>[...hk,newKey]);heroKeysRef.current=[...heroKeysRef.current,newKey];
@@ -955,7 +975,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
       // (set by dismissEnc's "teleport" action). Stepping on either pad
       // sends the hero straight to the other.
       for(const t of (level.teleporters||[])){
-        if(!teleportsActive.has(t.gateRoom))continue;
+        if(!teleportsActiveRef.current.has(t.gateRoom))continue;
         const at=nx===t.a.x&&ny===t.a.y,bt=nx===t.b.x&&ny===t.b.y;
         if(!at&&!bt)continue;
         const dest=at?t.b:t.a;
