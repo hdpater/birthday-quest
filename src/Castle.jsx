@@ -254,28 +254,57 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
   const level=React.useMemo(()=>scaleLevel(CASTLE_LEVELS[levelIdx]),[levelIdx]);
   const [keyOpen,setKeyOpen]=React.useState(false);
 
+  // Per-level progress (doors, keys, items, encounters, secrets, fog of
+  // war...) is cached here keyed by levelIdx, so switching levels — or
+  // saving/loading — doesn't discard whichever level isn't currently
+  // active. goToLevel() writes the outgoing level's live state into this
+  // cache before switching and reads the incoming level's state back out
+  // of it (falling back to fresh defaults the first time a level is
+  // entered). Room/door ids are reused between levels (e.g. both levels
+  // have a "room_1"), so this per-level namespacing also stops progress on
+  // one level from bleeding into the other.
+  const levelCacheRef=React.useRef(null);
+  if(levelCacheRef.current===null){
+    const cache={};
+    for(const [idxKey,ls] of Object.entries(initialState?.levels ?? {})){
+      cache[idxKey]={
+        closedBarriers:new Set(ls.closedBarriers ?? []),
+        groundKeys:ls.groundKeys,
+        groundItems:ls.groundItems,
+        encounters:ls.encounters,
+        defeatedRooms:new Set(ls.defeatedRooms ?? []),
+        secretRevealed:new Set(ls.secretRevealed ?? []),
+        teleportsActive:new Set(ls.teleportsActive ?? []),
+        fireCleared:new Set(ls.fireCleared ?? []),
+        explored:new Set(ls.explored ?? []),
+      };
+    }
+    levelCacheRef.current=cache;
+  }
+  const initialLevelCache=levelCacheRef.current[levelIdx];
+
   const [heroPos,setHeroPos]=React.useState(()=>initialState?.heroPos ?? {x:level.start[0],y:level.start[1]});
   const heroPosRef=React.useRef(initialState?.heroPos ?? {x:level.start[0],y:level.start[1]});
   // Barrier model (matches StealthGame): barrierDefs are static per-level door
   // definitions; closedBarriers is the Set of ids still blocking passage —
   // removing an id from the set opens that door.
-  const [closedBarriers,setClosedBarriers]=React.useState(()=>new Set(initialState?.closedBarriers ?? level.barrierDefs.map(d=>d.id)));
+  const [closedBarriers,setClosedBarriers]=React.useState(()=>new Set(initialLevelCache?.closedBarriers ?? level.barrierDefs.map(d=>d.id)));
   const closedBarriersRef=React.useRef(closedBarriers);
   React.useEffect(()=>{closedBarriersRef.current=closedBarriers;},[closedBarriers]);
   const [heroKeys,setHeroKeys]=React.useState(()=>initialState?.heroKeys ?? []);
   const heroKeysRef=React.useRef(initialState?.heroKeys ?? []);
   React.useEffect(()=>{heroKeysRef.current=heroKeys;},[heroKeys]);
-  const [groundKeys,setGroundKeys]=React.useState(()=>initialState?.groundKeys ?? level.keys);
-  const [groundItems,setGroundItems]=React.useState(()=>initialState?.groundItems ?? {...level.groundItemsInit});
+  const [groundKeys,setGroundKeys]=React.useState(()=>initialLevelCache?.groundKeys ?? level.keys);
+  const [groundItems,setGroundItems]=React.useState(()=>initialLevelCache?.groundItems ?? {...level.groundItemsInit});
   const [groundModal,setGroundModal]=React.useState(null);
-  const [encounters,setEncounters]=React.useState(()=>initialState?.encounters ?? level.encounters);
+  const [encounters,setEncounters]=React.useState(()=>initialLevelCache?.encounters ?? level.encounters);
   const encRef=React.useRef(encounters);
   React.useEffect(()=>{encRef.current=encounters;},[encounters]);
-  const [defeatedRooms,setDefeatedRooms]=React.useState(()=>new Set(initialState?.defeatedRooms ?? []));
+  const [defeatedRooms,setDefeatedRooms]=React.useState(()=>new Set(initialLevelCache?.defeatedRooms ?? []));
   const [encModal,setEncModal]=React.useState(null);
   const [target,setTarget]=React.useState(null);
   const pathRef=React.useRef([]);
-  const exploredRef=React.useRef(new Set());
+  const exploredRef=React.useRef(new Set(initialLevelCache?.explored ?? []));
   // Tracks the ground-item tile the modal was last auto-shown for, so
   // dismissing it doesn't immediately re-show the same tile — the hero
   // must actually reach a different tile before it can trigger again.
@@ -288,9 +317,9 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
   const addCLog=m=>{addLog(m);setLog(p=>[m,...p].slice(0,15));};
 
   // Secret doors, teleporters, fire state
-  const [secretRevealed,setSecretRevealed]=React.useState(()=>new Set(initialState?.secretRevealed ?? []));
-  const [teleportsActive,setTeleportsActive]=React.useState(()=>new Set(initialState?.teleportsActive ?? []));
-  const [fireCleared,setFireCleared]=React.useState(()=>new Set(initialState?.fireCleared ?? []));  // set of room ids with fire cleared
+  const [secretRevealed,setSecretRevealed]=React.useState(()=>new Set(initialLevelCache?.secretRevealed ?? []));
+  const [teleportsActive,setTeleportsActive]=React.useState(()=>new Set(initialLevelCache?.teleportsActive ?? []));
+  const [fireCleared,setFireCleared]=React.useState(()=>new Set(initialLevelCache?.fireCleared ?? []));  // set of room ids with fire cleared
   const [combatModal,setCombatModal]=React.useState(null);
   const [multiCombatModal,setMultiCombatModal]=React.useState(null);
   // One-off castle-wide reward, awarded by winning the Stealth mini-game
@@ -306,47 +335,84 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
 
   const C={bg:"#0d0a06",panel:"#1a1510",border:"#3d2f18",gold:"#c9a84c",text:"#e8dcc8",dim:"#7a6a4a",red:"#c0392b",green:"#2d8a4e",blue:"#2e6da4"};
 
-  // Gathers current castle progress for saving — mirrors the shape
-  // `initialState` seeds the useStates above from. Sets aren't JSON-
-  // serializable, so they're converted to arrays here.
-  const buildCastleSnapshot=()=>({
-    levelIdx,
-    heroPos,
-    closedBarriers:[...closedBarriers],
-    heroKeys,
+  // Snapshots the live per-level state (the pieces cached by levelCacheRef)
+  // for whichever level is currently active, so it can be written into the
+  // cache before switching away from it or before saving.
+  const snapshotCurrentLevel=()=>({
+    closedBarriers:new Set(closedBarriers),
     groundKeys,
     groundItems,
     encounters,
-    defeatedRooms:[...defeatedRooms],
-    secretRevealed:[...secretRevealed],
-    teleportsActive:[...teleportsActive],
-    fireCleared:[...fireCleared],
-    iceCrystal,
-    blackBelt,
+    defeatedRooms:new Set(defeatedRooms),
+    secretRevealed:new Set(secretRevealed),
+    teleportsActive:new Set(teleportsActive),
+    fireCleared:new Set(fireCleared),
+    explored:new Set(exploredRef.current),
   });
+
+  // Gathers current castle progress for saving — mirrors the shape
+  // `initialState` seeds the useStates above from. Sets aren't JSON-
+  // serializable, so they're converted to arrays here. Per-level state
+  // covers both levels (whichever isn't currently active comes straight
+  // out of levelCacheRef), not just the one the hero is standing on.
+  const buildCastleSnapshot=()=>{
+    levelCacheRef.current[levelIdx]=snapshotCurrentLevel();
+    const levels={};
+    for(const [idxKey,ls] of Object.entries(levelCacheRef.current)){
+      levels[idxKey]={
+        closedBarriers:[...ls.closedBarriers],
+        groundKeys:ls.groundKeys,
+        groundItems:ls.groundItems,
+        encounters:ls.encounters,
+        defeatedRooms:[...ls.defeatedRooms],
+        secretRevealed:[...ls.secretRevealed],
+        teleportsActive:[...ls.teleportsActive],
+        fireCleared:[...ls.fireCleared],
+        explored:[...ls.explored],
+      };
+    }
+    return {
+      levelIdx,
+      heroPos,
+      heroKeys,
+      iceCrystal,
+      blackBelt,
+      levels,
+    };
+  };
 
   // Switch level. viaStairs spawns the hero at the target level's `stairs`
   // position instead of its `start` — used when ascending back from level 2
   // via its start square, so the hero lands where level 1's down-stairs are,
-  // not back at level 1's own entrance.
+  // not back at level 1's own entrance. The level being left has its live
+  // state written into levelCacheRef so it's restored exactly as left when
+  // the hero comes back; the level being entered is restored from that same
+  // cache (or fresh defaults, the first time it's visited).
   const goToLevel=(idx,{viaStairs}={})=>{
+    levelCacheRef.current[levelIdx]=snapshotCurrentLevel();
     const lv=scaleLevel(CASTLE_LEVELS[idx]);
     const spawn=viaStairs?{x:lv.stairs[0],y:lv.stairs[1]}:{x:lv.start[0],y:lv.start[1]};
+    const cached=levelCacheRef.current[idx];
     setLevelIdx(idx);
     setHeroPos(spawn);
     heroPosRef.current=spawn;
-    setClosedBarriers(new Set(lv.barrierDefs.map(d=>d.id)));
-    closedBarriersRef.current=new Set(lv.barrierDefs.map(d=>d.id));
+    const cb=new Set(cached?.closedBarriers ?? lv.barrierDefs.map(d=>d.id));
+    setClosedBarriers(cb);
+    closedBarriersRef.current=cb;
     // heroKeys is NOT reset here — keys are tagged with the level they were
     // found on (see pickup below) and only unlock doors on that same level,
     // so carrying them across a level transition is harmless and lets the
     // hero keep level 2 keys when popping back up to level 1 via the stairs.
-    setGroundKeys(lv.keys);
-    setGroundItems({...lv.groundItemsInit});
-    setEncounters(lv.encounters);
-    encRef.current=lv.encounters;
-    setDefeatedRooms(new Set());
-    exploredRef.current=new Set();
+    setGroundKeys(cached?.groundKeys ?? lv.keys);
+    setGroundItems(cached?.groundItems ?? {...lv.groundItemsInit});
+    const encs=cached?.encounters ?? lv.encounters;
+    setEncounters(encs);
+    encRef.current=encs;
+    setDefeatedRooms(new Set(cached?.defeatedRooms ?? []));
+    setSecretRevealed(new Set(cached?.secretRevealed ?? []));
+    setTeleportsActive(new Set(cached?.teleportsActive ?? []));
+    setFireCleared(new Set(cached?.fireCleared ?? []));
+    exploredRef.current=new Set(cached?.explored ?? []);
     pathRef.current=[];setTarget(null);
   };
 
