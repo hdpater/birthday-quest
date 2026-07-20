@@ -1099,7 +1099,7 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
       const alive=prev.filter(m=>m.health>0);
       if(!alive.length) return prev;
       const target=alive.reduce((a,b)=>b.health<a.health?b:a);
-      return prev.map(m=>{
+      const next=prev.map(m=>{
         if(m.uid!==target.uid) return m;
         let nm={...m};
         if(comps.includes("fire")){const d=rng(1,5);nm.health=Math.max(0,nm.health-d);lines.push(`${wand.name}: ${d} fire dmg on ${nm.name}.`);}
@@ -1108,9 +1108,13 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
         if(comps.includes("dark")){const d=rng(1,5)*10;nm.health=Math.max(0,nm.health-d);lines.push(`${wand.name}: ${d} dark dmg on ${nm.name}.`);}
         if(comps.includes("crystal")){const d=rng(1,3)*10;nm.strength=Math.max(1,nm.strength-d);lines.push(`${wand.name}: -${d} str on ${nm.name}.`);}
         if(comps.includes("shadow")){const d=rng(1,3)*10;nm.skill=Math.max(1,nm.skill-d);lines.push(`${wand.name}: -${d} skill on ${nm.name}.`);}
-        if(nm.health<=0) wonCombat=true;
         return nm;
       });
+      // A wand only ends the fight once every monster in the group is
+      // down — checking just the struck target let killing the first of
+      // several monsters jump straight to the victory screen.
+      wonCombat=next.every(m=>m.health<=0);
+      return next;
     });
     setHeroState(h=>{
       const cur=h.inventory.find(i=>i.uid===wand.uid);
