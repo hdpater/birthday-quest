@@ -337,7 +337,7 @@ export const CASTLE_LEVELS = [
       "25,4": [groundItem("fifth","gi_l2_25_4"), {...gold(30),uid:"gi_l2_25_4_gold"}],
       "5,55": [groundItem("sevenup","gi_l2_5_55"), {...gold(68),uid:"gi_l2_5_55_gold"}],
       "53,32": [groundItem("butter","gi_l2_53_32"), {...gold(69),uid:"gi_l2_53_32_gold"}],
-      "101,107": [{name:"Ninja To",slot:"either",strBonus:8,type:"weapon",poisonOnHit:true,uid:"ninja_to"}, {...gold(1021),uid:"gi_l2_101_107_gold"}],
+      "101,107": [{name:"Ninja To",slot:"either",strBonus:8,type:"weapon",poisonOnHit:true,cost:2500,uid:"ninja_to"}, {...gold(1021),uid:"gi_l2_101_107_gold"}],
       // Magic drops, tiered to the monster guarding each room (tier =
       // ceil(monster level/5), same formula as monster-loot drops).
       "3,11": [{...magicItem("dark","potion","gi_l2_3_11_magic"),uid:"gi_l2_3_11_magic"}], // room_1, Court Jester Lv27 (t6)
