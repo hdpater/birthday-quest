@@ -276,7 +276,7 @@ function DragonIntroModal({C,onFight,onFlee}){
       <img src={DRAGON_IMG} alt="The Golden Dragon" style={{width:"100%",maxWidth:340,height:260,objectFit:"cover",borderRadius:8,border:"2px solid "+C.border,marginBottom:14}}/>
       <div style={{fontSize:16,color:C.gold,fontFamily:"serif",marginBottom:8}}>The Golden Dragon</div>
       <div style={{fontSize:12,color:C.text,marginBottom:16,fontStyle:"italic"}}>
-        "Look at my shiny scales, little hero. Gold beyond counting, and you think you can take it from me?"
+        "I am magnificent and very beautiful. Look at how shiny my shiny scales are, little hero. And my fire! Bet you can't breathe fire. And I have a lot of gold. Now run, or I'll bite you!"
       </div>
       <div style={{display:"flex",gap:10}}>
         <button style={btnStyle(C.red)} onClick={onFight}>⚔ Fight</button>
@@ -1247,7 +1247,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         onFight={()=>{
           const{enc,fromPos}=dragonIntroModal;
           setDragonIntroModal(null);
-          setCombatModal({monster:{...enc,maxHealth:100,strength:40,skill:40,armour:25,attacks:2,level:35,isDragon:true},fromPos});
+          setCombatModal({monster:{...enc,maxHealth:100,strength:100,skill:100,armour:100,attacks:2,level:100,isDragon:true},fromPos});
         }}
         onFlee={()=>{
           // Same as backing out of CombatScreen mid-fight: return to the
