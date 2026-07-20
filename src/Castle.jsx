@@ -136,6 +136,26 @@ function castlePassable(passableSet, x, y) {
   return x>=0&&y>=0&&x<CASTLE_SIZE&&y<CASTLE_SIZE&&passableSet.has(`${x},${y}`);
 }
 
+// Walks a Bresenham line from (sx,sy) toward (tx,ty), one cell at a time,
+// and returns the last cell for which stepOk(x,y) held — used to turn a
+// click on an unreachable tile (darkness, a wall, a closed door) into
+// "walk as far that way as possible" instead of silently ignoring the click.
+function lastPassableAlongLine(sx,sy,tx,ty,stepOk){
+  let x=sx,y=sy;
+  const dx=Math.abs(tx-x),dy=Math.abs(ty-y);
+  const stepX=tx>x?1:-1,stepY=ty>y?1:-1;
+  let err=dx-dy;
+  while(x!==tx||y!==ty){
+    const e2=2*err;
+    let nx=x,ny=y;
+    if(e2>-dy){err-=dy;nx+=stepX;}
+    if(e2<dx){err+=dx;ny+=stepY;}
+    if(!stepOk(nx,ny))break;
+    x=nx;y=ny;
+  }
+  return {x,y};
+}
+
 function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,saves,saveMsg,onSaveGame,onLoadGame,onDeleteSave,hasIceCrystal,onLaunchStealth,hasBlackBelt,onLaunchNinja,onDismiss}){
   const [paid,setPaid]=React.useState(false);
   const action=enc.action||{};
@@ -903,11 +923,20 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
     const cy=Math.floor((e.clientY-rect.top)*scaleY/CASTLE_CELL);
     const wx=heroPosRef.current.x-CASTLE_HALF+cx;
     const wy=heroPosRef.current.y-CASTLE_HALF+cy;
-    if(!isPassable(wx,wy))return;
-    if(!exploredRef.current.has(`${wx},${wy}`))return;
-    const path=bfsPath(heroPosRef.current.x,heroPosRef.current.y,wx,wy,level.barrierDefs,heroKeysRef.current,exploredRef.current,closedBarriersRef.current);
-    if(path&&path.length>0){setTarget({x:wx,y:wy});pathRef.current=path;}
-  },[isPassable,bfsPath,level]);
+    let path=bfsPath(heroPosRef.current.x,heroPosRef.current.y,wx,wy,level.barrierDefs,heroKeysRef.current,exploredRef.current,closedBarriersRef.current);
+    let dest={x:wx,y:wy};
+    if(!path){
+      // Unreachable target (darkness, a wall, a closed/locked door) — walk
+      // as far toward it as possible instead of ignoring the click,
+      // stopping at the last passable, already-explored tile along the way.
+      const canStep=(x,y)=>canPass(x,y,level.barrierDefs,heroKeysRef.current,closedBarriersRef.current)&&exploredRef.current.has(`${x},${y}`);
+      const stop=lastPassableAlongLine(heroPosRef.current.x,heroPosRef.current.y,wx,wy,canStep);
+      if(stop.x===heroPosRef.current.x&&stop.y===heroPosRef.current.y)return;
+      dest=stop;
+      path=bfsPath(heroPosRef.current.x,heroPosRef.current.y,dest.x,dest.y,level.barrierDefs,heroKeysRef.current,exploredRef.current,closedBarriersRef.current);
+    }
+    if(path&&path.length>0){setTarget(dest);pathRef.current=path;}
+  },[bfsPath,canPass,level]);
 
   // Walk step
   React.useEffect(()=>{

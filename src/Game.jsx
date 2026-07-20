@@ -24,6 +24,26 @@ const biomeAt  = (x,y) => BIOME[y*SIZE+x];
 const distAt   = (x,y) => DIST[y*SIZE+x];
 const monLvl   = (x,y) => Math.round(5 + (distAt(x,y)/MAX_DIST)*26);
 
+// Walks a Bresenham line from (sx,sy) toward (tx,ty), one cell at a time,
+// and returns the last cell for which stepOk(x,y) held — used to turn a
+// click on an unreachable tile (sea, castle darkness/a wall) into "walk as
+// far that way as possible" instead of silently ignoring the click.
+function lastPassableAlongLine(sx,sy,tx,ty,stepOk){
+  let x=sx,y=sy;
+  const dx=Math.abs(tx-x),dy=Math.abs(ty-y);
+  const stepX=tx>x?1:-1,stepY=ty>y?1:-1;
+  let err=dx-dy;
+  while(x!==tx||y!==ty){
+    const e2=2*err;
+    let nx=x,ny=y;
+    if(e2>-dy){err-=dy;nx+=stepX;}
+    if(e2<dx){err+=dx;ny+=stepY;}
+    if(!stepOk(nx,ny))break;
+    x=nx;y=ny;
+  }
+  return {x,y};
+}
+
 // ── Monsters ─────────────────────────────────────────────────────────────────
 import { M_NAMES } from "./data/monsters.js";
 import { M_LEVELS } from "./data/monsters.js";
@@ -2679,11 +2699,21 @@ export default function Game(){
 
   const handleMapClick=useCallback((x,y)=>{
     if(modal||gameState!=="playing") return;
-    if(!isLand(x,y)) return;
     clearTimeout(stepRef.current); pathRef.current=[];
-    const path=computePath(heroPosRef.current.x,heroPosRef.current.y,x,y);
+    let path=computePath(heroPosRef.current.x,heroPosRef.current.y,x,y);
+    let dest={x,y};
+    if(!path){
+      // Unreachable target (sea, or a disconnected pocket of land) — walk
+      // as far toward it as possible instead of ignoring the click,
+      // stopping at the last passable tile before the line of travel runs
+      // off land.
+      const stop=lastPassableAlongLine(heroPosRef.current.x,heroPosRef.current.y,x,y,isLand);
+      if(stop.x===heroPosRef.current.x&&stop.y===heroPosRef.current.y) return;
+      dest=stop;
+      path=computePath(heroPosRef.current.x,heroPosRef.current.y,dest.x,dest.y);
+    }
     if(!path||path.length===0) return;
-    pathRef.current=path; setTarget({x,y});
+    pathRef.current=path; setTarget(dest);
     walkPath();
   },[modal,gameState,computePath,walkPath]);
 
