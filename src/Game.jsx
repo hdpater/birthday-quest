@@ -2821,7 +2821,15 @@ export default function Game(){
       {gameState==="won"&&<WinScreen onContinue={()=>{setGameState("playing");addLog("You step out of the castle, your quest complete.");}}/>}
       {gameState==="castle"&&<CastleLevel heroState={heroState} setHeroState={setHeroState} addLog={addLog}
         initialState={pendingCastleState} saves={saves} saveMsg={saveMsg} onSaveGame={(snap)=>commitSave(snap)} onLoadGame={loadGame} onDeleteSave={deleteSave}
-        onExit={(snap)=>{setPendingCastleState(snap);setGameState("playing");addLog("You return to the island.");}} onWin={()=>{setGameState("won");addLog("🐉 The Golden Dragon falls! Victory!");}}
+        onExit={(snap)=>{setPendingCastleState(snap);setGameState("playing");addLog("You return to the island.");}}
+        onWin={()=>{
+          // Clear the in-progress snapshot (which still points at the dragon's
+          // room on level 2) so the next castle entry starts fresh at level 1's
+          // entry stairs instead of resuming mid-boss-fight.
+          setPendingCastleState(null);
+          setGameState("won");
+          addLog("🐉 The Golden Dragon falls! Victory!");
+        }}
         onDeath={()=>setGameState("dead")}/>}
       {gameState==="dead"&&<GameOverScreen onRestart={()=>{setHeroState({...INIT_HERO});setHeroPos({x:23,y:14});heroPosRef.current={x:23,y:14};setDefeatedGuardians(new Set());defeatedGuardiansRef.current=new Set();setGameState("playing");setModal(null);pathRef.current=[];setLog(["Your quest begins anew at The Salty Cove Tavern."]);}}/>}
     </div>
