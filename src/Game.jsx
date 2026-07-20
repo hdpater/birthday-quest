@@ -2822,11 +2822,14 @@ export default function Game(){
       {gameState==="castle"&&<CastleLevel heroState={heroState} setHeroState={setHeroState} addLog={addLog}
         initialState={pendingCastleState} saves={saves} saveMsg={saveMsg} onSaveGame={(snap)=>commitSave(snap)} onLoadGame={loadGame} onDeleteSave={deleteSave}
         onExit={(snap)=>{setPendingCastleState(snap);setGameState("playing");addLog("You return to the island.");}}
-        onWin={()=>{
-          // Clear the in-progress snapshot (which still points at the dragon's
-          // room on level 2) so the next castle entry starts fresh at level 1's
-          // entry stairs instead of resuming mid-boss-fight.
-          setPendingCastleState(null);
+        onWin={(snap)=>{
+          // Keep everything the hero earned (keys, opened doors, cleared
+          // rooms, ice crystal/black belt) but reset levelIdx/heroPos so the
+          // next castle entry starts fresh at level 1's entry stairs instead
+          // of resuming right where the dragon fight ended, on level 2.
+          // Omitting heroPos lets CastleLevel fall back to its own level-1
+          // start position.
+          setPendingCastleState(snap?{...snap,levelIdx:0,heroPos:undefined}:null);
           setGameState("won");
           addLog("🐉 The Golden Dragon falls! Victory!");
         }}

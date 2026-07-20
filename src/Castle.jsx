@@ -1199,9 +1199,17 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         addLog={addCLog}
         groundItems={groundItems} setGroundItems={setGroundItemsTracked} heroPos={heroPos}
         onVictory={(mon)=>{
-          setEncounters(es=>es.filter(e=>e.room!==combatModal.monster.room));
+          const survivingEncounters=encRef.current.filter(e=>e.room!==combatModal.monster.room);
+          setEncounters(survivingEncounters);
           addCLog(`⚔ ${combatModal.monster.name} defeated!`);
-          if(mon.isDragon){setCombatModal(null);onWin&&onWin();}
+          if(mon.isDragon){
+            setCombatModal(null);
+            // encRef normally catches up via its own effect, but onWin needs
+            // a snapshot built from *this* click — sync it immediately so
+            // the fallen dragon isn't still sitting in what gets saved.
+            encRef.current=survivingEncounters;
+            onWin&&onWin(buildCastleSnapshot());
+          }
           else setCombatModal(null);
         }}
         onDefeat={()=>{setCombatModal(null);addLog("💀 You fell in the castle...");setHeroState(h=>({...h,health:0}));onDeath&&onDeath();}}
