@@ -1,6 +1,6 @@
 import React from "react";
 import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX, squareViewStyle } from "./Game.jsx";
-import { NPC_IMG } from "./data/images.js";
+import { NPC_IMG, CASTLE_DRAGON_IMG } from "./data/images.js";
 import { CASTLE_LEVELS } from "./data/castleLevels.js";
 import StealthGame from "./StealthGame.tsx";
 import NinjaDummy from "./NinjaDummy artifact.tsx";
@@ -263,6 +263,28 @@ function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,sa
   );
 }
 
+// Shown once when the hero first steps into the dragon's room, before combat
+// starts — a chance to back out via Flee (which leaves the room exactly like
+// walking away from any other encounter) instead of being dropped straight
+// into CombatScreen with no warning.
+function DragonIntroModal({C,onFight,onFlee}){
+  const outerStyle={position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200};
+  const innerStyle={background:C.panel,border:"2px solid "+C.border,borderRadius:10,padding:20,maxWidth:420,width:"90%",color:C.text,textAlign:"center"};
+  const btnStyle=col=>({padding:"10px 20px",background:"transparent",border:"1.5px solid "+col,color:col,cursor:"pointer",borderRadius:3,fontSize:13,flex:1});
+  return(
+    <div style={outerStyle}><div style={innerStyle}>
+      <img src={CASTLE_DRAGON_IMG} alt="The Golden Dragon" style={{width:"100%",maxWidth:340,height:260,objectFit:"cover",borderRadius:8,border:"2px solid "+C.border,marginBottom:14}}/>
+      <div style={{fontSize:16,color:C.gold,fontFamily:"serif",marginBottom:8}}>The Golden Dragon</div>
+      <div style={{fontSize:12,color:C.text,marginBottom:16,fontStyle:"italic"}}>
+        "Look at my shiny scales, little hero. Gold beyond counting, and you think you can take it from me?"
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <button style={btnStyle(C.red)} onClick={onFight}>⚔ Fight</button>
+        <button style={btnStyle(C.dim)} onClick={onFlee}>🏃 Flee</button>
+      </div>
+    </div></div>
+  );
+}
 
 export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,onDeath,initialState,onSaveGame,onLoadGame,onDeleteSave,saves,saveMsg}){
   const canvasRef=React.useRef(null);
@@ -354,6 +376,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
   React.useEffect(()=>{fireClearedRef.current=fireCleared;},[fireCleared]);
   const [combatModal,setCombatModal]=React.useState(null);
   const [multiCombatModal,setMultiCombatModal]=React.useState(null);
+  const [dragonIntroModal,setDragonIntroModal]=React.useState(null);
   // One-off castle-wide reward, awarded by winning the Stealth mini-game
   // (see Red's NPC entry, room_13/level 1) — displayed as a header icon like
   // heroKeys, not added to heroState.inventory. Not per-level, so goToLevel
@@ -1082,7 +1105,7 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
               shownEncounterKeyRef.current=ek;
               setTimeout(()=>{
                 if(activeEnc.type==="dragon_boss"){
-                  setCombatModal({monster:{...activeEnc,maxHealth:100,strength:40,skill:40,armour:25,attacks:2,level:35,isDragon:true},fromPos:{...lastCorridorRef.current}});
+                  setDragonIntroModal({enc:activeEnc,fromPos:{...lastCorridorRef.current}});
                 } else if(isGroup){
                   setMultiCombatModal({monsters:roomMonsters.map(m=>({...m,maxHealth:100,level:m.level||1,uid:`${m.room}_${m.cx}_${m.cy}`})),room:activeEnc.room,fromPos:{...lastCorridorRef.current}});
                 } else {
@@ -1219,6 +1242,24 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
         hasIceCrystal={iceCrystal} onLaunchStealth={()=>{setEncModal(null);setPlayingStealth(true);}}
         hasBlackBelt={blackBelt} onLaunchNinja={()=>{setEncModal(null);setPlayingNinja(true);}}
         onDismiss={(remove,actionType)=>dismissEnc(remove,actionType)}/>}
+
+      {dragonIntroModal&&<DragonIntroModal C={C}
+        onFight={()=>{
+          const{enc,fromPos}=dragonIntroModal;
+          setDragonIntroModal(null);
+          setCombatModal({monster:{...enc,maxHealth:100,strength:40,skill:40,armour:25,attacks:2,level:35,isDragon:true},fromPos});
+        }}
+        onFlee={()=>{
+          // Same as backing out of CombatScreen mid-fight: return to the
+          // corridor the hero entered from and clear the trigger flag so
+          // stepping back in shows this same intro again.
+          const{enc,fromPos}=dragonIntroModal;
+          heroPosRef.current=fromPos;
+          setHeroPos(fromPos);
+          pathRef.current=[];setTarget(null);
+          setDefeatedRooms(dr=>{const nd=new Set(dr);nd.delete(enc.room+"_triggered");return nd;});
+          setDragonIntroModal(null);
+        }}/>}
 
       {combatModal&&<CombatScreen
         monster={combatModal.monster}
