@@ -1,6 +1,6 @@
 import React from "react";
 import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX, squareViewStyle } from "./Game.jsx";
-import { NPC_IMG, CASTLE_DRAGON_IMG } from "./data/images.js";
+import { NPC_IMG, DRAGON_IMG } from "./data/images.js";
 import { CASTLE_LEVELS } from "./data/castleLevels.js";
 import StealthGame from "./StealthGame.tsx";
 import NinjaDummy from "./NinjaDummy artifact.tsx";
@@ -273,7 +273,7 @@ function DragonIntroModal({C,onFight,onFlee}){
   const btnStyle=col=>({padding:"10px 20px",background:"transparent",border:"1.5px solid "+col,color:col,cursor:"pointer",borderRadius:3,fontSize:13,flex:1});
   return(
     <div style={outerStyle}><div style={innerStyle}>
-      <img src={CASTLE_DRAGON_IMG} alt="The Golden Dragon" style={{width:"100%",maxWidth:340,height:260,objectFit:"cover",borderRadius:8,border:"2px solid "+C.border,marginBottom:14}}/>
+      <img src={DRAGON_IMG} alt="The Golden Dragon" style={{width:"100%",maxWidth:340,height:260,objectFit:"cover",borderRadius:8,border:"2px solid "+C.border,marginBottom:14}}/>
       <div style={{fontSize:16,color:C.gold,fontFamily:"serif",marginBottom:8}}>The Golden Dragon</div>
       <div style={{fontSize:12,color:C.text,marginBottom:16,fontStyle:"italic"}}>
         "Look at my shiny scales, little hero. Gold beyond counting, and you think you can take it from me?"
