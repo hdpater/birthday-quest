@@ -26,6 +26,10 @@ const CASTLE_CANVAS = CASTLE_VIEW * CASTLE_CELL;
 // Actual radial reach of the highlight raycast in grid cells (each ray step
 // advances 0.5 cells) — used to fade the highlight smoothly near its edge.
 const HIGHLIGHT_REACH = (CASTLE_HALF + 1) * 0.5;
+// Reach of a ground key's "anti-torch" forced-darkness halo (see the fog-dim
+// block in draw()) — deliberately small, just enough to darken the key's own
+// tile and its immediate neighbours back down for contrast, not the whole room.
+const KEY_DARK_REACH = 2;
 
 const KEY_COLORS_C = {
   red:"#c0392b",blue:"#2980b9",green:"#27ae60",
@@ -819,7 +823,25 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
           else if(isHeroVis)dist=Math.hypot(wx-hx,wy-hy);
           else dist=torchDist;
           const fadeStart=HIGHLIGHT_REACH*0.5;
-          const t=Math.max(0,Math.min(1,(dist-fadeStart)/(HIGHLIGHT_REACH-fadeStart)));
+          let t=Math.max(0,Math.min(1,(dist-fadeStart)/(HIGHLIGHT_REACH-fadeStart)));
+          // Ground keys act as "anti-torches" — a small forced-darkness halo
+          // around each one, so its colour always reads against a dark
+          // background instead of washing out whenever a torch or the
+          // hero's own glow happens to be lighting that same floor tile.
+          // Same falloff shape as a torch's halo, just added to the
+          // darkness instead of subtracted from it, and only ever makes
+          // the tile darker (never brightens a legitimately-dark cell).
+          if(!isWall&&gKeys&&gKeys.length){
+            let bestKeyD=Infinity;
+            for(const gk of gKeys){
+              const d=Math.hypot(wx-gk.x,wy-gk.y);
+              if(d<bestKeyD)bestKeyD=d;
+            }
+            if(bestKeyD<KEY_DARK_REACH){
+              const kt=1-bestKeyD/KEY_DARK_REACH;
+              t=Math.max(t,kt);
+            }
+          }
           if(t>0){ctx.fillStyle=`rgba(0,0,0,${(t*0.75).toFixed(3)})`;ctx.fillRect(px,py,S,S);}
         } else {
           ctx.fillStyle="rgba(0,0,0,0.75)";ctx.fillRect(px,py,S,S);
