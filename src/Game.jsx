@@ -903,8 +903,11 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
     <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
       <div style={{background:C.panel,border:`1px solid ${isDragon?"#ff6b00":C.border}`,borderRadius:10,overflow:"hidden",maxWidth:520,width:"95%",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
 
-        {/* Monster header */}
-        <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
+        {/* Monster header — hidden once victory is declared so the loot
+            panel below (which can grow tall enough to need the "inventory
+            full" warning) has the vertical room it needs instead of being
+            clipped by the panel's maxHeight. */}
+        {done!=="won"&&<div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
           {isDragon
             ? <img src={DRAGON_IMG} alt="Dragon" style={{width:120,height:120,objectFit:"cover",flexShrink:0}}/>
             : isTournament
@@ -925,7 +928,7 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
               <span>Atk:{effCeil(mon.attacks,mon.health)}/{mon.attacks}</span>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Hero bar */}
         <div style={{padding:"8px 14px",background:"#150f08",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
@@ -1165,7 +1168,11 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
         <div style={{background:"#150f08",borderBottom:`1px solid ${C.border}`,padding:"5px 14px",textAlign:"center",color:C.gold,fontSize:11,letterSpacing:"0.15em",textTransform:"uppercase",flexShrink:0}}>
           ⚔ {initMonsters.length > 1?`${initMonsters.length}-Way Encounter`:"Encounter"}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,padding:"6px 8px",flexShrink:0}}>
+        {/* Monster portrait grid — hidden once victory is declared so the
+            loot panel below (which can grow tall enough to need the
+            "inventory full" warning) has the vertical room it needs instead
+            of being clipped by the panel's maxHeight. */}
+        {done!=="won"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,padding:"6px 8px",flexShrink:0}}>
           {allSlots.map((orig,i)=>{
             if(!orig) return <div key={i}/>;
             const live=mons.find(m=>m.uid===orig.uid);
@@ -1194,7 +1201,7 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
               </div>
             );
           })}
-        </div>
+        </div>}
         <div style={{padding:"4px 10px",background:"#150f08",borderTop:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
             <span style={{color:C.dim}}>Hero</span>
