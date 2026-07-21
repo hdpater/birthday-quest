@@ -1185,7 +1185,7 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
                       <div style={{fontSize:8,color:C.dim,marginTop:3,lineHeight:1.5}}>
                         <div>HP: {live.health}%</div>
                         <div>Str: {Math.round(eff(live.strength,live.health))}/{live.strength}</div>
-                        <div>Skl: {live.skill} · Arm: {live.armour}</div>
+                        <div>Skl: {Math.round(eff(live.skill,live.health))}/{live.skill} · Arm: {live.armour}</div>
                         <div>Atk×{live.attacks} · Lv{live.level}</div>
                       </div>
                     </>}
