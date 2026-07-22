@@ -1211,9 +1211,6 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
             {ring&&<span style={{color:MAGIC_COLOR[ring.magicType]}}>💍 {ring.name}</span>}
           </div>
         </div>
-        <div style={{flex:1,minHeight:40,overflowY:"auto",padding:"5px 10px",background:"#0d0a06"}}>
-          {combatLog.map((l,i)=><div key={i} style={{fontSize:10,color:i===0?C.text:C.dim,marginBottom:1,lineHeight:1.35,opacity:Math.max(0.3,1-i*0.07)}}>{i===0?"▶ ":""}{l}</div>)}
-        </div>
         <div style={{padding:"6px 10px 8px",borderTop:`1px solid ${C.border}`,flexShrink:0}}>
           {!done&&<>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:5}}>
@@ -1243,6 +1240,11 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
           {done==="won"&&loot&&<ItemPickupPanel mode="victory" loot={loot} inventory={heroState.inventory||[]} equipped={heroState.equipped||{}} INV_MAX={INV_MAX} setHeroState={setHeroState} doEquipWeapon={doEquipWeapon} groundItems={groundItems} setGroundItems={setGroundItems} heroPos={heroPos} onDismiss={()=>{addLog(`Victory over ${initMonsters.length} enemies! +${loot.gold}g${loot.items.length?", "+loot.items.map(i=>i.name).join(", "):""}.`);onVictory();}}/>}
           {done==="fled"&&<div style={{textAlign:"center"}}><div style={{color:C.dim,fontSize:13,marginBottom:8}}>You flee into the shadows.</div><button style={btnS(C.gold,false)} onClick={onFlee} onMouseEnter={e=>{e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.gold;}}>Continue</button></div>}
           {done==="dead"&&<div style={{textAlign:"center"}}><div style={{color:C.red,fontSize:14,marginBottom:8}}>💀 You have fallen.</div><button style={btnS(C.red,false)} onClick={onDefeat} onMouseEnter={e=>{e.currentTarget.style.background=C.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.red;}}>Game Over</button></div>}
+        </div>
+        {/* Combat log — kept below the action buttons so it never pushes
+            them down or off-screen as it fills up. */}
+        <div style={{flex:1,minHeight:40,overflowY:"auto",padding:"5px 10px",background:"#0d0a06",borderTop:`1px solid ${C.border}`}}>
+          {combatLog.map((l,i)=><div key={i} style={{fontSize:10,color:i===0?C.text:C.dim,marginBottom:1,lineHeight:1.35,opacity:Math.max(0.3,1-i*0.07)}}>{i===0?"▶ ":""}{l}</div>)}
         </div>
       </div>
     </div>
