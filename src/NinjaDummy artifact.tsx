@@ -678,14 +678,8 @@ export default function NinjaDummy({ onReward, onExit }) {
         )}
       </div>
 
-      {/* Round log */}
-      {roundLog.length > 0 && (
-        <div ref={logRef} style={{ margin:"10px 16px 0", background:C.panel, borderRadius:8, border:`1px solid ${C.border}`, maxHeight:100, overflowY:"auto", padding:"8px 12px" }}>
-          {roundLog.map((l,i) => <div key={i} style={{ fontSize:11, color:i===0?C.text:C.dim, lineHeight:1.6 }}>{l}</div>)}
-        </div>
-      )}
-
-      {/* Action buttons */}
+      {/* Action buttons — kept above the round log so it never gets pushed
+          off-screen as the log grows. */}
       <div style={{ padding:"12px 16px 0", display:"flex", gap:8 }}>
         {phase==="place" && <>
           <button onClick={clearBoard} style={btnS(C.dim, false)}>Clear</button>
@@ -704,6 +698,13 @@ export default function NinjaDummy({ onReward, onExit }) {
           </div>
         )}
       </div>
+
+      {/* Round log */}
+      {roundLog.length > 0 && (
+        <div ref={logRef} style={{ margin:"10px 16px 0", background:C.panel, borderRadius:8, border:`1px solid ${C.border}`, maxHeight:100, overflowY:"auto", padding:"8px 12px" }}>
+          {roundLog.map((l,i) => <div key={i} style={{ fontSize:11, color:i===0?C.text:C.dim, lineHeight:1.6 }}>{l}</div>)}
+        </div>
+      )}
 
     </div>
   );
