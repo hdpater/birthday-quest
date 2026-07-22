@@ -858,8 +858,7 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
       let nh={...h};
 	if(comps.includes("fire")){
 	    const d=rng(1,5)+3;
-	    reverts.health=h.health;
-	    nh.health=h.health+d;
+	    nh.health=Math.min(100,h.health+d);
 	    addCombatLog(`${pot.name}: +${d} health.`);
 	}
 	if(comps.includes("lightning")){
@@ -876,8 +875,7 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
 	}
 	if(comps.includes("dark")){
 	    const d=(rng(1,5)+3)*10;
-	    reverts.health=h.health;
-	    nh.health=h.health+d;
+	    nh.health=Math.min(100,h.health+d);
 	    addCombatLog(`${pot.name}: +${d} health.`);
 	}
 	if(comps.includes("crystal")){
@@ -1145,10 +1143,10 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
     const reverts={};
     setHeroState(h=>{
       let nh={...h};
-      if(comps.includes("fire")){const d=rng(1,5);reverts.health=h.health;nh.health=h.health+d;addCombatLog(`${pot.name}: +${d} health.`);}
+      if(comps.includes("fire")){const d=rng(1,5);nh.health=Math.min(100,h.health+d);addCombatLog(`${pot.name}: +${d} health.`);}
       if(comps.includes("lightning")){const d=rng(1,5);reverts.baseSkill=h.baseSkill;nh.baseSkill=h.baseSkill+d;addCombatLog(`${pot.name}: +${d} skill.`);}
       if(comps.includes("iron")){const d=rng(1,5);reverts.baseStrength=h.baseStrength;nh.baseStrength=h.baseStrength+d;addCombatLog(`${pot.name}: +${d} strength.`);}
-      if(comps.includes("dark")){const d=rng(1,5)*10;reverts.health=h.health;nh.health=h.health+d;addCombatLog(`${pot.name}: +${d} health.`);}
+      if(comps.includes("dark")){const d=rng(1,5)*10;nh.health=Math.min(100,h.health+d);addCombatLog(`${pot.name}: +${d} health.`);}
       if(comps.includes("crystal")){const d=rng(1,5);nh.baseStrength=h.baseStrength+d;addCombatLog(`${pot.name}: +${d} strength (permanent).`);}
       if(comps.includes("shadow")){const d=rng(1,5);nh.baseSkill=h.baseSkill+d;addCombatLog(`${pot.name}: +${d} skill (permanent).`);}
       nh.inventory=h.inventory.filter(i=>i.id!==pot.id);
