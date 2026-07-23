@@ -1706,7 +1706,7 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,set
                       setHeroState(h=>({...h,equipped:{...h.equipped,finger:item},inventory:[...h.inventory.filter((_,j)=>j!==realIdx),...(old?[old]:[])]}));
                     }}>Wear</button>}
                   <button style={{fontSize:8,padding:"1px 6px",background:"transparent",border:`1px solid ${C.dim}`,color:C.dim,cursor:"pointer",borderRadius:2}}
-                    onClick={()=>setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==realIdx)}))}>Drop</button>
+                    onClick={()=>dropItem(item)}>Drop</button>
                 </div>
               );
             })}
