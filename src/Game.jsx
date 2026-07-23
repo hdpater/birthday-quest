@@ -2228,9 +2228,9 @@ export default function Game(){
   const [merchantStock,setMerchantStock]=useState(null);
   const [groundItems,setGroundItems]=useState({
     "32,30": [{...magicItem("fire","potion","fire_pot_g"),uid:"fire_pot_g"}, {...gold(49),uid:"gold_32_30"}],
-    "69,58": [{...magicItem("fire","potion","fire_pot_g2"),uid:"fire_pot_g2"}, {...gold(33),uid:"gold_69_58"}],
-    "145,20": [{...magicItem("fire","potion","fire_pot_g3"),uid:"fire_pot_g3"}, {...gold(46),uid:"gold_145_20"}],
-    "186,17": [{...magicItem("fire","wand","fire_wand_g"),uid:"fire_wand_g"}, {...gold(22),uid:"gold_186_17"}],
+    "69,58": [{...magicItem("lightning","potion","lightning_pot_g2"),uid:"lightning_pot_g2"}, {...gold(33),uid:"gold_69_58"}],
+    "145,20": [{...magicItem("iron","potion","iron_pot_g3"),uid:"iron_pot_g3"}, {...gold(46),uid:"gold_145_20"}],
+    "186,17": [{...magicItem("iron","wand","iron_wand_g"),uid:"iron_wand_g"}, {...gold(22),uid:"gold_186_17"}],
     "208,20": [{...magicItem("arcane","wand","arc_wand_g"),uid:"arc_wand_g"}, {...gold(55),uid:"gold_208_20"}],
     "28,89": [{...magicItem("frost","wand","frost_wand_g"),uid:"frost_wand_g"}, {...gold(14),uid:"gold_28_89"}],
     "95,113": [groundItem("longsword","ground_longsword_95_113"), {...gold(12),uid:"gold_95_113"}],
