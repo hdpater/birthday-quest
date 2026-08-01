@@ -484,7 +484,7 @@ function drawGem(ctx,x,y,s){
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderFrame(ctx, state) {
-  const{hero,guards,losSets,map,barriers,levelDone,alerted,ld,stone,throwMode,torches}=state;
+  const{hero,guards,losSets,map,barriers,levelDone,alerted,ld,stone,throwMode,reticle,torches}=state;
   const W=ld.W,H=ld.H;
   const CW=VIEW_W*CELL,CH=VIEW_H*CELL;
   ctx.clearRect(0,0,CW,CH);
@@ -718,7 +718,16 @@ function renderFrame(ctx, state) {
     ctx.setLineDash([]);
     ctx.fillStyle='#ffe080';ctx.font='bold 11px monospace';
     ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText('TAP TO THROW',CW/2,CH*0.08);
+    ctx.fillText('TAP, OR ARROWS + ⏎ TO THROW',CW/2,CH*0.08);
+    // Keyboard aim reticle — moved by arrows/WASD, thrown with Enter (see
+    // the tick loop's reticle-move branch and the Enter handler above).
+    if(reticle&&inView(reticle.r,reticle.c)){
+      const rx=sx(reticle.c)+CELL/2,ry=sy(reticle.r)+CELL/2;
+      ctx.strokeStyle='#ffe080';ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(rx,ry,CELL*0.55,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(rx-CELL*0.9,ry);ctx.lineTo(rx-CELL*0.3,ry);ctx.moveTo(rx+CELL*0.3,ry);ctx.lineTo(rx+CELL*0.9,ry);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(rx,ry-CELL*0.9);ctx.lineTo(rx,ry-CELL*0.3);ctx.moveTo(rx,ry+CELL*0.3);ctx.lineTo(rx,ry+CELL*0.9);ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -740,6 +749,8 @@ export default function StealthGame({onWin,onExit}={}){
   // down/rebuild the interval on every parent render).
   const onWinRef=useRef(onWin);
   useEffect(()=>{onWinRef.current=onWin;},[onWin]);
+  const onExitRef=useRef(onExit);
+  useEffect(()=>{onExitRef.current=onExit;},[onExit]);
   const canvasRef=useRef(null);
   const[alertMsg,setAlertMsg]=useState(null);
   const[tick,setTick]=useState(0);
@@ -798,27 +809,25 @@ export default function StealthGame({onWin,onExit}={}){
     setInfoScreen(null);
   },[]);
 
+  // gs.current.throwMode/reticle mirror throwModeRef so renderFrame (which
+  // only ever sees gs.current, not component state) can draw the aim
+  // overlay/crosshair. reticle starts on the hero's own cell and is moved
+  // by arrow keys — keyboard's equivalent of tapping a spot on the canvas
+  // (see the tick loop below), so throwing works without a pointer device.
   const enterThrowMode=useCallback(()=>{
     if(!gs.current.hasStone||gs.current.stone)return;
     // Toggle: press again to cancel
     const next=!throwModeRef.current;
     throwModeRef.current=next;
+    gs.current.throwMode=next;
+    gs.current.reticle=next?{r:gs.current.hero.r,c:gs.current.hero.c}:null;
     setThrowMode(next);
   },[]);
 
-  // Canvas tap/click during throw mode → select target cell
-  const onCanvasPointer=useCallback(e=>{
-    if(!throwModeRef.current)return;
-    e.preventDefault();
-    const canvas=canvasRef.current;if(!canvas)return;
-    const rect=canvas.getBoundingClientRect();
-    const px=(('clientX' in e)?e.clientX:e.changedTouches[0].clientX)-rect.left;
-    const py=(('clientY' in e)?e.clientY:e.changedTouches[0].clientY)-rect.top;
-    const scaleX=canvas.width/rect.width,scaleY=canvas.height/rect.height;
+  // Shared throw-resolution logic — used by both the canvas tap/click (pixel
+  // coords converted to a cell below) and the keyboard reticle confirm.
+  const attemptThrow=useCallback((tr,tc)=>{
     const{hero,ld,map:gmap}=gs.current;
-    const vr=hero.r-Math.floor(VIEW_H/2),vc=hero.c-Math.floor(VIEW_W/2);
-    const tr=Math.floor(py*scaleY/CELL)+vr;
-    const tc=Math.floor(px*scaleX/CELL)+vc;
     // Must be a floor cell within hero's LOS (ray must not be blocked)
     if(tr<0||tr>=ld.H||tc<0||tc>=ld.W||gmap[tr*ld.W+tc]!==1)return;
     // Hero has 360° visibility (no sector), just check ray clearance
@@ -842,17 +851,57 @@ export default function StealthGame({onWin,onExit}={}){
       }
     }
     throwModeRef.current=false;
+    gs.current.throwMode=false;
+    gs.current.reticle=null;
     setThrowMode(false);
     showMsg('🪨 STONE THROWN!','#c8a030',1000);
   },[showMsg]);
 
-  // Keyboard
+  // Canvas tap/click during throw mode → select target cell
+  const onCanvasPointer=useCallback(e=>{
+    if(!throwModeRef.current)return;
+    e.preventDefault();
+    const canvas=canvasRef.current;if(!canvas)return;
+    const rect=canvas.getBoundingClientRect();
+    const px=(('clientX' in e)?e.clientX:e.changedTouches[0].clientX)-rect.left;
+    const py=(('clientY' in e)?e.clientY:e.changedTouches[0].clientY)-rect.top;
+    const scaleX=canvas.width/rect.width,scaleY=canvas.height/rect.height;
+    const{hero}=gs.current;
+    const vr=hero.r-Math.floor(VIEW_H/2),vc=hero.c-Math.floor(VIEW_W/2);
+    const tr=Math.floor(py*scaleY/CELL)+vr;
+    const tc=Math.floor(px*scaleX/CELL)+vc;
+    attemptThrow(tr,tc);
+  },[attemptThrow]);
+
+  // Keyboard — Arrows/WASD move (held, tracked via the keys Set below);
+  // Enter and Escape are one-shot actions for players without a pointer
+  // device (e.g. a TV remote's D-pad + OK/Back buttons):
+  //   Enter:  dismiss an info screen, else arm throw mode, else (already
+  //           armed) confirm the throw at the current reticle cell.
+  //   Escape: cancel throw mode if armed, else exit the game (mirrors a
+  //           remote's "Back" button, which browsers typically map to Escape).
   useEffect(()=>{
-    const dn=e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();gs.current.keys.add(e.key);};
+    const dn=e=>{
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();
+      gs.current.keys.add(e.key);
+      if(e.key==='Enter'){
+        e.preventDefault();
+        if(!gameRunningRef.current){dismissInfo();return;}
+        if(throwModeRef.current){
+          if(gs.current.reticle)attemptThrow(gs.current.reticle.r,gs.current.reticle.c);
+        } else {
+          enterThrowMode();
+        }
+      } else if(e.key==='Escape'){
+        e.preventDefault();
+        if(throwModeRef.current)enterThrowMode();
+        else onExitRef.current&&onExitRef.current();
+      }
+    };
     const up=e=>gs.current.keys.delete(e.key);
     window.addEventListener('keydown',dn);window.addEventListener('keyup',up);
     return()=>{window.removeEventListener('keydown',dn);window.removeEventListener('keyup',up);};
-  },[]);
+  },[dismissInfo,enterThrowMode,attemptThrow]);
 
   // Joystick
   const joystickRef=useRef(null);
@@ -991,6 +1040,12 @@ export default function StealthGame({onWin,onExit}={}){
           if(canR) g.hero.r+=dr;
           else if(canC) g.hero.c+=dc;
         }
+      } else if(g.reticle&&(dr!==0||dc!==0)){
+        // Same arrow/WASD input moves the aim reticle instead while throw
+        // mode is armed — the keyboard's stand-in for tapping a spot on the
+        // canvas. Just clamped to the map bounds; floor/LOS is validated at
+        // confirm time (Enter), same as a mouse click already is.
+        g.reticle={r:Math.max(0,Math.min(H-1,g.reticle.r+dr)),c:Math.max(0,Math.min(W-1,g.reticle.c+dc))};
       }
 
       // ── Checkpoint tracking (level 1): advance furthest-room marker ──────
@@ -1206,13 +1261,14 @@ export default function StealthGame({onWin,onExit}={}){
         <div style={{fontSize:11,letterSpacing:'0.3em',textTransform:'uppercase',color:'#3a6a8a'}}>
           ■ Stealth — Level {currentLevel}
         </div>
-        {onExit&&<div onClick={onExit}
+        {onExit&&<div onClick={onExit} tabIndex={0} role="button"
+          onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();onExit();}}}
           style={{fontSize:10,letterSpacing:'0.15em',color:'#5a6a78',cursor:'pointer',border:'1px solid #2a3540',padding:'3px 8px',borderRadius:3}}>
           ✕ EXIT
         </div>}
       </div>
       <div style={{display:'flex',gap:24,fontSize:10,color:'#3a4a58'}}>
-        <span>ARROWS / WASD / JOYSTICK</span>
+        <span>ARROWS / WASD / JOYSTICK · ⏎ THROW · ESC BACK</span>
         <span>TICK: {tick}</span>
       </div>
       <div style={{minHeight:20,maxWidth:`min(${canvasSize}px, 92vw)`,fontSize:13,letterSpacing:'0.2em',fontWeight:'bold',
@@ -1227,9 +1283,10 @@ export default function StealthGame({onWin,onExit}={}){
           onClick={onCanvasPointer}
           onTouchEnd={onCanvasPointer}/>
 
-        {/* Info screen overlay — pauses game, tap to dismiss */}
+        {/* Info screen overlay — pauses game, tap (or Enter) to dismiss */}
         {infoScreen&&(
-          <div onClick={dismissInfo}
+          <div onClick={dismissInfo} tabIndex={0} role="button" autoFocus
+            onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();dismissInfo();}}}
             style={{position:'absolute',inset:0,
               background:'rgba(5,8,12,0.88)',
               display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
@@ -1245,13 +1302,14 @@ export default function StealthGame({onWin,onExit}={}){
               {infoScreen.text}
             </div>
             <div style={{fontSize:10,color:'#334455',letterSpacing:'0.15em',marginTop:8}}>
-              TAP TO CONTINUE
+              TAP OR ⏎ TO CONTINUE
             </div>
           </div>
         )}
         {/* Throw stone button — mirrors joystick position on left side */}
         {currentLevel===2&&hasStone&&!gs.current?.stone&&(
-          <div onClick={enterThrowMode}
+          <div onClick={enterThrowMode} tabIndex={0} role="button"
+            onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();enterThrowMode();}}}
             style={{position:'absolute',bottom:70,left:120,
               width:JOY_R*2,height:JOY_R*2,borderRadius:'50%',
               background:throwMode?'rgba(200,168,80,0.35)':'rgba(200,168,80,0.12)',
