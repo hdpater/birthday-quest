@@ -1263,6 +1263,11 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
   };
   const buyFood=(food)=>{
     if(heroState.gold<food.price) return;
+    // Buying past INV_MAX would leave no way to Leave the tavern — the
+    // "Leave" button (onDismiss, wired up by the caller) blocks dismissal
+    // while inventory is over the cap, and this dialogue has no inv/drop
+    // tab of its own to fix that from, so the player would get stuck.
+    if(inv.length>=INV_MAX) return;
     setHeroState(h=>({...h,gold:h.gold-food.price,inventory:[...h.inventory,{...food,uid:Date.now()+Math.random(),type:"food"}]}));
   };
   const buyBoard=()=>{
@@ -1289,12 +1294,13 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
         <div style={{flex:1,overflowY:"auto",padding:"12px 14px"}}>
           {false&&<>
           <div style={{color:C.dim,fontSize:11,fontStyle:"italic",marginTop:8}}>No food? Buy some in the Buy tab.</div></>}
-          {tab==="buy"&&<>{FOOD.map(food=>{const can=heroState.gold>=food.price;return(<div key={food.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:5,borderRadius:4,background:can?"#1f1a11":"#130f0a",border:`1px solid ${C.border}`,opacity:can?1:0.5}}>
+          {tab==="buy"&&<>{FOOD.map(food=>{const can=heroState.gold>=food.price&&inv.length<INV_MAX;return(<div key={food.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:5,borderRadius:4,background:can?"#1f1a11":"#130f0a",border:`1px solid ${C.border}`,opacity:can?1:0.5}}>
             <span style={{fontSize:16}}>{food.emoji}</span>
             <div style={{flex:1}}><div style={{fontSize:12,color:C.text}}>{food.name}</div><div style={{fontSize:10,color:C.dim}}>+{food.heal}% health</div></div>
             <span style={{fontSize:12,color:C.gold}}>{food.price}g</span>
             <button style={btnS(C.gold,!can)} disabled={!can} onClick={()=>buyFood(food)} onMouseEnter={e=>{if(can){e.currentTarget.style.background=C.gold;e.currentTarget.style.color=C.bg;}}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=can?C.gold:"#444";}}>Buy</button>
           </div>);})}
+          {inv.length>=INV_MAX&&<div style={{color:C.red,fontSize:11,marginTop:6,textAlign:"center"}}>⚠ Inventory full ({inv.length}/{INV_MAX}) — nothing more can be bought.</div>}
           </>}
           {tab==="board"&&<div style={{padding:"8px 0"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px",background:"#1f1a11",border:`1px solid ${C.border}`,borderRadius:4,marginBottom:12}}>
