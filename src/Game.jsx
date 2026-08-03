@@ -242,6 +242,60 @@ export function doEquipWeapon(item, eq) {
 const C={bg:"#0d1117",panel:"#1a1510",border:"#3d2f18",gold:"#c9a84c",text:"#e8dcc8",dim:"#7a6a4a",red:"#c0392b",green:"#2d8a4e",blue:"#2e6da4"};
 export const btnS=(col,dis)=>({padding:"6px 14px",background:"transparent",border:`1.5px solid ${dis?"#333":col}`,color:dis?"#444":col,fontFamily:"'Palatino Linotype',Palatino,serif",fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",cursor:dis?"not-allowed":"pointer",borderRadius:3,transition:"background 0.15s"});
 
+// Arrow-key roving focus for shop/list dialogues — a Fire TV (or any D-pad-
+// only) remote has no pointer, so without this there's no way to reach or
+// scroll to a Buy/Sell/Equip button past the first screenful. Up/Left and
+// Down/Right just walk document order through every enabled button/
+// [tabindex]/range-slider inside the given container, wrapping at the ends;
+// focusing an element inside a scrolling ancestor is auto-scrolled into view
+// by the browser natively, so this covers "scrolling through items" for free.
+// Auto-focuses the first item on mount/reopen so there's something to move
+// focus *from* — a D-pad has no way to click into the panel first.
+//
+// navStack: several of these hooks can be mounted at once — e.g. the
+// collapsible Hero panel stays mounted behind a shop modal opened on top of
+// it (its own "open" state is never reset when a modal opens). Without
+// coordination both would react to the same arrow-key press and fight over
+// focus. Each active instance pushes a token here in mount order and only
+// acts while it's the topmost (i.e. the most recently opened) one; closing
+// it hands control back to whatever was open underneath.
+const navStack=[];
+export function useArrowNav(containerRef,active=true){
+  useEffect(()=>{
+    if(!active)return;
+    const root=containerRef.current;
+    if(!root)return;
+    const token={};
+    navStack.push(token);
+    const isTop=()=>navStack[navStack.length-1]===token;
+    const getFocusables=()=>Array.from(root.querySelectorAll('button:not(:disabled), [tabindex="0"], input[type="range"]'));
+    const initial=getFocusables();
+    if(isTop()&&initial.length&&!root.contains(document.activeElement))initial[0].focus();
+    const onKey=e=>{
+      if(!isTop())return;
+      if(!["ArrowDown","ArrowUp","ArrowLeft","ArrowRight"].includes(e.key))return;
+      // Let a focused range slider (e.g. the combat aggression slider)
+      // handle its own Left/Right — that's its native value-adjust
+      // behaviour, not a request to move focus elsewhere.
+      const active2=document.activeElement;
+      if(active2?.tagName==="INPUT"&&active2.type==="range"&&(e.key==="ArrowLeft"||e.key==="ArrowRight"))return;
+      const items=getFocusables();
+      if(!items.length)return;
+      const idx=items.indexOf(document.activeElement);
+      const forward=e.key==="ArrowDown"||e.key==="ArrowRight";
+      const next=idx<0?0:forward?(idx+1)%items.length:(idx-1+items.length)%items.length;
+      e.preventDefault();
+      items[next].focus();
+    };
+    window.addEventListener("keydown",onKey);
+    return()=>{
+      window.removeEventListener("keydown",onKey);
+      const i=navStack.indexOf(token);
+      if(i!==-1)navStack.splice(i,1);
+    };
+  },[containerRef,active]);
+}
+
 function HpBar({pct,color}){
   const c=color||(pct>60?"#2d8a4e":pct>25?"#c9a02b":"#c0392b");
   return <div style={{height:6,background:"#1a1208",borderRadius:3,overflow:"hidden",marginBottom:4}}>
@@ -668,6 +722,8 @@ function ItemPickupPanel({mode,
 
 // ── Combat Screen ─────────────────────────────────────────────────────────────
 export function CombatScreen({monster,heroState,setHeroState,isDragon,isTournament,isCastle,fixedLoot,fixedGold,fixedCandles,onVictory,onDefeat,onFlee,addLog,groundItems,setGroundItems,heroPos}){
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const [mon,setMon]=useState({...monster,health:monster.maxHealth||100});
   const [potionReverts,setPotionReverts]=useState({});
   const [combatLog,setCombatLog]=useState(monster.dialogue
@@ -899,7 +955,7 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
 
   return(
     <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C.panel,border:`1px solid ${isDragon?"#ff6b00":C.border}`,borderRadius:10,overflow:"hidden",maxWidth:520,width:"95%",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
+      <div ref={rootRef} style={{background:C.panel,border:`1px solid ${isDragon?"#ff6b00":C.border}`,borderRadius:10,overflow:"hidden",maxWidth:520,width:"95%",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
 
         {/* Monster header — hidden once victory is declared so the loot
             panel below (which can grow tall enough to need the "inventory
@@ -982,6 +1038,8 @@ export function CombatScreen({monster,heroState,setHeroState,isDragon,isTourname
 
 // ── Multi-Monster Combat Screen ───────────────────────────────────────────────
 export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,isCastle,addLog,groundItems,setGroundItems,heroPos,onVictory,onDefeat,onFlee}){
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const [mons,setMons]=useState(initMonsters.map(m=>({...m,health:m.maxHealth||100})));
   const [potionReverts,setPotionReverts]=useState({});
   const [combatLog,setCombatLog]=useState([`⚔ You are ambushed by ${initMonsters.length} enemies!`]);
@@ -1162,7 +1220,7 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
 
   return(
     <div style={{position:"fixed",inset:0,background:"#000d",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:540,width:"95%",maxHeight:"96vh",display:"flex",flexDirection:"column"}}>
+      <div ref={rootRef} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:540,width:"95%",maxHeight:"96vh",display:"flex",flexDirection:"column"}}>
         <div style={{background:"#150f08",borderBottom:`1px solid ${C.border}`,padding:"5px 14px",textAlign:"center",color:C.gold,fontSize:11,letterSpacing:"0.15em",textTransform:"uppercase",flexShrink:0}}>
           ⚔ {initMonsters.length > 1?`${initMonsters.length}-Way Encounter`:"Encounter"}
         </div>
@@ -1254,6 +1312,8 @@ export function MultiCombatScreen({monsters:initMonsters,heroState,setHeroState,
 // ── Shop dialogues ────────────────────────────────────────────────────────────
 function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGame,onLoadGame,onDeleteSave,onDismiss}){
   const [tab,setTab]=useState("buy");
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const inv=heroState.inventory||[];
   const eat=(food)=>{
     const idx=inv.findIndex(i=>i.id===food.id&&i.type==="food");
@@ -1277,7 +1337,7 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
   const foodInInv=(food)=>inv.filter(i=>i.id===food.id&&i.type==="food").length;
   return(
     <div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C.panel,border:`2px solid ${building.color}55`,borderRadius:10,overflow:"hidden",maxWidth:440,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+      <div ref={rootRef} style={{background:C.panel,border:`2px solid ${building.color}55`,borderRadius:10,overflow:"hidden",maxWidth:440,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:"#120f07",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:28}}>🍺</span>
           <div>
@@ -1288,7 +1348,9 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
         </div>
         <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
           {[["buy","🛒 Buy"],["board","🛏 Board"],["save","💾 Save"]].map(([t,l])=>(
-            <div key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
+            <div key={t} onClick={()=>setTab(t)} tabIndex={0} role="tab" aria-selected={tab===t}
+              onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setTab(t);}}}
+              style={{flex:1,padding:"8px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"12px 14px"}}>
@@ -1355,6 +1417,8 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
 // ── Armourer Dialogue ─────────────────────────────────────────────────────────
 function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
   const [tab,setTab]=useState("buy");
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const [notice,setNotice]=useState("");
   const notify=msg=>{setNotice(msg);setTimeout(()=>setNotice(""),2500);};
   const eq=heroState.equipped||{};
@@ -1402,7 +1466,7 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
   const SLOT_LABELS={head:"Head",body:"Body",right_hand:"Right Hand",left_hand:"Left Hand",feet:"Feet"};
   return(
     <div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C.panel,border:`2px solid ${building.color}55`,borderRadius:10,overflow:"hidden",maxWidth:500,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+      <div ref={rootRef} style={{background:C.panel,border:`2px solid ${building.color}55`,borderRadius:10,overflow:"hidden",maxWidth:500,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:"#120f07",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:28}}>⚔</span>
           <div><div style={{color:C.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>{building.name}</div><div style={{color:C.dim,fontSize:11}}>Gold: <span style={{color:C.gold}}>{heroState.gold}g</span> · Inv: <span style={{color:(heroState.inventory||[]).length>=INV_MAX?C.red:C.dim}}>{(heroState.inventory||[]).length}/{INV_MAX}</span></div></div>
@@ -1411,7 +1475,9 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
         {notice&&<div style={{background:"#1a0e0e",borderBottom:`1px solid ${C.red}`,padding:"6px 14px",fontSize:11,color:"#e07070",flexShrink:0}}>⚠ {notice}</div>}
         <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
           {[["buy","🛒 Buy"],["inv","🎒 Inventory"],["eq","🛡 Equipped"]].map(([t,l])=>(
-            <div key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
+            <div key={t} onClick={()=>setTab(t)} tabIndex={0} role="tab" aria-selected={tab===t}
+              onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setTab(t);}}}
+              style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
@@ -1449,6 +1515,8 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
 // ── Magic Shop Dialogue ───────────────────────────────────────────────────────
 function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onDismiss}){
   const [tab,setTab]=useState("buy");
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const inv=heroState.inventory||[];
   const eq=heroState.equipped||{};
   const [scrollMsg,setScrollMsg]=useState(null);
@@ -1481,7 +1549,7 @@ function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onD
     ring:{fire:"Heal 1–3/rnd",lightning:"+1 attack/rnd",iron:"+5 armour",green:"Fire+Iron",sun:"Lightning+Fire",frost:"Lightning+Iron",arcane:"All three"}};
   return(
     <div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C.panel,border:`2px solid ${building.color}55`,borderRadius:10,overflow:"hidden",maxWidth:460,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+      <div ref={rootRef} style={{background:C.panel,border:`2px solid ${building.color}55`,borderRadius:10,overflow:"hidden",maxWidth:460,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:"#120f07",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:28}}>✦</span>
           <div><div style={{color:C.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>{building.name}</div><div style={{color:C.dim,fontSize:11}}>Gold: <span style={{color:C.gold}}>{heroState.gold}g</span></div></div>
@@ -1489,7 +1557,9 @@ function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onD
         </div>
         <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
           {[["buy","🛒 Buy"],["inv","🎒 Inventory"]].map(([t,l])=>(
-            <div key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
+            <div key={t} onClick={()=>setTab(t)} tabIndex={0} role="tab" aria-selected={tab===t}
+              onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setTab(t);}}}
+              style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
@@ -1562,9 +1632,11 @@ function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onD
 function CastleDialogue({heroState,onDismiss,onEnter,onWin}){
   const candles=heroState.candles||0;
   const canEnter=candles>=50;
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   return(
     <div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:"#12101a",border:"2px solid #9b59b6",borderRadius:10,padding:24,maxWidth:420,width:"95%",textAlign:"center",boxShadow:"0 0 40px #9b59b644"}}>
+      <div ref={rootRef} style={{background:"#12101a",border:"2px solid #9b59b6",borderRadius:10,padding:24,maxWidth:420,width:"95%",textAlign:"center",boxShadow:"0 0 40px #9b59b644"}}>
         <div style={{fontSize:40,marginBottom:8}}>🏰</div>
         <div style={{color:"#9b59b6",fontSize:18,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>The Castle Gates</div>
         {canEnter?<>
@@ -1596,6 +1668,8 @@ function CastleDialogue({heroState,onDismiss,onEnter,onWin}){
 // ── Merchant Dialogue ─────────────────────────────────────────────────────────
 function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,setGroundItems,heroPos,onDismiss}){
   const [tab,setTab]=useState("buy");
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const inv=heroState.inventory||[];
   const buy=(item)=>{
     if(heroState.gold<item.price&&heroState.gold<item.cost) return;
@@ -1626,7 +1700,7 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,set
   const TYPE_ICON={food:"🍺",weapon:"⚔",armour:"🛡",magic:"✦"};
   return(
     <div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C.panel,border:"1px solid #8B6914",borderRadius:10,overflow:"hidden",maxWidth:460,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+      <div ref={rootRef} style={{background:C.panel,border:"1px solid #8B6914",borderRadius:10,overflow:"hidden",maxWidth:460,width:"95%",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:"#120f07",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:28}}>🧳</span>
           <div><div style={{color:C.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>Wandering Merchant</div><div style={{color:C.dim,fontSize:11,fontStyle:"italic"}}>"Fine wares, traveller!"</div></div>
@@ -1634,7 +1708,9 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,set
         </div>
         <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
           {[["buy","🛒 Buy"],["sell","💰 Sell"],["equip","⚔ Equip"]].map(([t,l])=>(
-            <div key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
+            <div key={t} onClick={()=>setTab(t)} tabIndex={0} role="tab" aria-selected={tab===t}
+              onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setTab(t);}}}
+              style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
@@ -1957,6 +2033,8 @@ const CANVAS=VIEW*CELL_PX; // 976px viewport
 
 
 export function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,weaponAttacks,doEquipWeapon,heroPos,setGroundItems,posScale=1}){
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const eq=heroState.equipped||{};
   const inv=heroState.inventory||[];
   const overFull=inv.length>INV_MAX;
@@ -1973,7 +2051,7 @@ export function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,wea
     setHeroState(h=>({...h,inventory:h.inventory.filter((_,j)=>j!==idx)}));
   };
   return(
-    <div style={{background:"#1a1510",border:`1px solid ${C.border}`,borderRight:"none",
+    <div ref={rootRef} style={{background:"#1a1510",border:`1px solid ${C.border}`,borderRight:"none",
       padding:"10px 12px",width:185,maxHeight:"85vh",overflowY:"auto",
       display:"flex",flexDirection:"column",gap:8}}>
 
@@ -2088,6 +2166,8 @@ export function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,wea
 // ── Ground Items Dialogue ────────────────────────────────────────────────────
 export function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setGroundItems,onDismiss}){
   const C2=C; // alias
+  const rootRef=useRef(null);
+  useArrowNav(rootRef);
   const eq=heroState.equipped||{};
 
   const takeAll=()=>{
@@ -2150,7 +2230,7 @@ export function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setG
 
   return(
     <div style={{position:"fixed",inset:0,background:"#000b",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-      <div style={{background:C2.panel,border:`1px solid ${C2.border}`,borderRadius:10,overflow:"hidden",maxWidth:400,width:"95%",maxHeight:"80vh",display:"flex",flexDirection:"column"}}>
+      <div ref={rootRef} style={{background:C2.panel,border:`1px solid ${C2.border}`,borderRadius:10,overflow:"hidden",maxWidth:400,width:"95%",maxHeight:"80vh",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"12px 16px",borderBottom:`1px solid ${C2.border}`,background:"#120f07",flexShrink:0}}>
           <div style={{color:C2.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>Items on the Ground</div>
           <div style={{color:C2.dim,fontSize:10,marginTop:2}}>You find something here...</div>
@@ -2801,7 +2881,8 @@ export default function Game(){
             {/* HERO INFO TAB */}
       <div style={{position:"fixed",top:"50%",right:0,transform:"translateY(-50%)",
         display:"flex",alignItems:"stretch",zIndex:50}}>
-        <div onClick={()=>setKeyOpen(o=>!o)}
+        <div onClick={()=>setKeyOpen(o=>!o)} tabIndex={0} role="button"
+          onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setKeyOpen(o=>!o);}}}
           style={{background:"#1a1510",border:`1px solid ${C.border}`,borderRight:"none",
             borderRadius:"6px 0 0 6px",padding:"10px 5px",cursor:"pointer",
             display:"flex",alignItems:"center",writingMode:"vertical-rl",

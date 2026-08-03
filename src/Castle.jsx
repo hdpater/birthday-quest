@@ -1,5 +1,5 @@
 import React from "react";
-import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX, squareViewStyle, magicItem } from "./Game.jsx";
+import { CombatScreen, MultiCombatScreen, HeroPanel, GroundItemsDialogue, weaponAttacks, totalArmour, doEquipWeapon, btnS, INV_MAX, squareViewStyle, magicItem, useArrowNav } from "./Game.jsx";
 import { NPC_IMG, DRAGON_IMG } from "./data/images.js";
 import { CASTLE_LEVELS } from "./data/castleLevels.js";
 import StealthGame from "./StealthGame.tsx";
@@ -174,6 +174,8 @@ function dragonHoard(){
 }
 
 function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,saves,saveMsg,onSaveGame,onLoadGame,onDeleteSave,hasIceCrystal,onLaunchStealth,hasBlackBelt,onLaunchNinja,onDismiss}){
+  const rootRef=React.useRef(null);
+  useArrowNav(rootRef);
   const [paid,setPaid]=React.useState(false);
   const action=enc.action||{};
   const inv=heroState.inventory||[];
@@ -197,7 +199,7 @@ function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,sa
     setDefeatedRooms(dr=>{const nd=new Set(dr);nd.delete(entryKey+"_triggered");return nd;});
   };
   return(
-    <div style={outerStyle}><div style={innerStyle}>
+    <div style={outerStyle}><div ref={rootRef} style={innerStyle}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
         <NpcPortrait col={enc.col} row={enc.row} size={300}/>
       </div>
@@ -285,11 +287,13 @@ function NpcModalCastle({enc,heroState,setHeroState,C,addLog,setDefeatedRooms,sa
 // walking away from any other encounter) instead of being dropped straight
 // into CombatScreen with no warning.
 function DragonIntroModal({C,onFight,onFlee}){
+  const rootRef=React.useRef(null);
+  useArrowNav(rootRef);
   const outerStyle={position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200};
   const innerStyle={background:C.panel,border:"2px solid "+C.border,borderRadius:10,padding:20,maxWidth:420,width:"90%",color:C.text,textAlign:"center"};
   const btnStyle=col=>({padding:"10px 20px",background:"transparent",border:"1.5px solid "+col,color:col,cursor:"pointer",borderRadius:3,fontSize:13,flex:1});
   return(
-    <div style={outerStyle}><div style={innerStyle}>
+    <div style={outerStyle}><div ref={rootRef} style={innerStyle}>
       <img src={DRAGON_IMG} alt="The Golden Dragon" style={{width:"100%",maxWidth:340,height:260,objectFit:"cover",borderRadius:8,border:"2px solid "+C.border,marginBottom:14}}/>
       <div style={{fontSize:16,color:C.gold,fontFamily:"serif",marginBottom:8}}>The Golden Dragon</div>
       <div style={{fontSize:12,color:C.text,marginBottom:16,fontStyle:"italic"}}>
@@ -1260,7 +1264,8 @@ export default function CastleLevel({heroState,setHeroState,addLog,onExit,onWin,
       {/* HERO INFO TAB — same collapsible panel as the island. */}
       <div style={{position:"fixed",top:"50%",right:0,transform:"translateY(-50%)",
         display:"flex",alignItems:"stretch",zIndex:50}}>
-        <div onClick={()=>setKeyOpen(o=>!o)}
+        <div onClick={()=>setKeyOpen(o=>!o)} tabIndex={0} role="button"
+          onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setKeyOpen(o=>!o);}}}
           style={{background:"#1a1510",border:`1px solid ${C.border}`,borderRight:"none",
             borderRadius:"6px 0 0 6px",padding:"10px 5px",cursor:"pointer",
             display:"flex",alignItems:"center",writingMode:"vertical-rl",
