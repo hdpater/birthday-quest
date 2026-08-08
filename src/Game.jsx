@@ -296,6 +296,88 @@ export function useArrowNav(containerRef,active=true){
   },[containerRef,active]);
 }
 
+// Draggable scrollbar thumb for a scrollable list — Fire TV's "cursor mode"
+// emulates a mouse pointer, but many TV browsers render no grabbable native
+// scrollbar for it to aim at. Render this as a child of any `overflowY:
+// "auto"` div that also has `position:"relative"` set: being absolutely
+// positioned inside a scrolling ancestor, it's positioned relative to that
+// ancestor's padding box (which doesn't move as content scrolls inside it),
+// so it stays pinned in place over the visible viewport instead of
+// scrolling away — reads as a normal scrollbar. Drag the thumb, or click
+// the empty part of the track to page toward that spot.
+export function ScrollThumb({scrollRef,color}){
+  const trackRef=useRef(null);
+  const [thumb,setThumb]=useState({top:0,heightPct:100,visible:false});
+
+  const measure=useCallback(()=>{
+    const el=scrollRef.current;
+    if(!el)return;
+    const{scrollTop,scrollHeight,clientHeight}=el;
+    if(scrollHeight<=clientHeight+1){setThumb(t=>t.visible?{top:0,heightPct:100,visible:false}:t);return;}
+    const heightPct=Math.max(12,(clientHeight/scrollHeight)*100);
+    const travel=100-heightPct;
+    const topPct=travel*(scrollTop/(scrollHeight-clientHeight));
+    setThumb({top:topPct,heightPct,visible:true});
+  },[scrollRef]);
+
+  useEffect(()=>{
+    const el=scrollRef.current;
+    if(!el)return;
+    measure();
+    el.addEventListener("scroll",measure);
+    const ro=new ResizeObserver(measure);
+    ro.observe(el);
+    // Buying/selling/switching tabs changes content height without the
+    // container itself resizing — watch DOM mutations too so the thumb's
+    // size/position stay accurate as the list changes.
+    const mo=new MutationObserver(measure);
+    mo.observe(el,{childList:true,subtree:true,characterData:true});
+    return()=>{el.removeEventListener("scroll",measure);ro.disconnect();mo.disconnect();};
+  },[measure]);
+
+  const startDrag=e=>{
+    const el=scrollRef.current,track=trackRef.current;
+    if(!el||!track)return;
+    e.preventDefault();e.stopPropagation();
+    const startY=e.clientY,startTop=el.scrollTop,trackH=track.clientHeight;
+    const thumbH=trackH*(thumb.heightPct/100);
+    const travel=trackH-thumbH;
+    const onMove=ev=>{
+      if(travel<=0)return;
+      const{scrollHeight,clientHeight}=el;
+      const dy=ev.clientY-startY;
+      el.scrollTop=Math.max(0,Math.min(scrollHeight-clientHeight,startTop+dy*((scrollHeight-clientHeight)/travel)));
+    };
+    const onUp=()=>{window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",onUp);};
+    window.addEventListener("pointermove",onMove);
+    window.addEventListener("pointerup",onUp);
+  };
+
+  // Clicking empty track (not the thumb itself, which starts a drag via its
+  // own onPointerDown) jumps the scroll position to that fraction of the
+  // track — the click-to-page behaviour of a native scrollbar's gutter.
+  const onTrackClick=e=>{
+    if(e.target!==trackRef.current)return;
+    const el=scrollRef.current,track=trackRef.current;
+    if(!el||!track)return;
+    const rect=track.getBoundingClientRect();
+    const clickPct=(e.clientY-rect.top)/rect.height;
+    const{scrollHeight,clientHeight}=el;
+    el.scrollTop=clickPct*(scrollHeight-clientHeight);
+  };
+
+  if(!thumb.visible)return null;
+  return(
+    <div ref={trackRef} onClick={onTrackClick}
+      style={{position:"absolute",top:0,right:1,bottom:0,width:6,
+        background:"#00000055",borderRadius:3,zIndex:5}}>
+      <div onPointerDown={startDrag}
+        style={{position:"absolute",left:0,right:0,top:`${thumb.top}%`,height:`${thumb.heightPct}%`,
+          background:color||"#8a7040",borderRadius:3,cursor:"grab"}}/>
+    </div>
+  );
+}
+
 function HpBar({pct,color}){
   const c=color||(pct>60?"#2d8a4e":pct>25?"#c9a02b":"#c0392b");
   return <div style={{height:6,background:"#1a1208",borderRadius:3,overflow:"hidden",marginBottom:4}}>
@@ -497,6 +579,7 @@ function ItemPickupPanel({mode,
     // shared
     INV_MAX,setHeroState,groundItems,setGroundItems,heroPos,onDismiss}){
   const isVictory=mode==="victory";
+  const bodyRef=useRef(null);
   const heroInv=inventory||[];
 
   const itemColor=item=>item.type==="magic"?(item.color||"#9b59b6"):
@@ -606,7 +689,8 @@ function ItemPickupPanel({mode,
             </div>}
 
         {/* Body */}
-        <div style={isVictory?{}:{flex:1,overflowY:"auto",padding:"10px 14px"}}>
+        <div ref={bodyRef} style={isVictory?{position:"relative"}:{flex:1,overflowY:"auto",padding:"10px 14px",position:"relative"}}>
+          <ScrollThumb scrollRef={bodyRef}/>
           {isVictory?(
             <>
               <div style={{background:"#0d2a1a",border:"1px solid #2d8a4e",borderRadius:5,padding:"8px 10px",marginBottom:8,fontSize:11}}>
@@ -1314,6 +1398,7 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
   const [tab,setTab]=useState("buy");
   const rootRef=useRef(null);
   useArrowNav(rootRef);
+  const bodyRef=useRef(null);
   const inv=heroState.inventory||[];
   const eat=(food)=>{
     const idx=inv.findIndex(i=>i.id===food.id&&i.type==="food");
@@ -1353,7 +1438,8 @@ function TavernDialogue({building,heroState,setHeroState,saves,saveMsg,onSaveGam
               style={{flex:1,padding:"8px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"12px 14px"}}>
+        <div ref={bodyRef} style={{flex:1,overflowY:"auto",padding:"12px 14px",position:"relative"}}>
+          <ScrollThumb scrollRef={bodyRef}/>
           {false&&<>
           <div style={{color:C.dim,fontSize:11,fontStyle:"italic",marginTop:8}}>No food? Buy some in the Buy tab.</div></>}
           {tab==="buy"&&<>{FOOD.map(food=>{const can=heroState.gold>=food.price&&inv.length<INV_MAX;return(<div key={food.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:5,borderRadius:4,background:can?"#1f1a11":"#130f0a",border:`1px solid ${C.border}`,opacity:can?1:0.5}}>
@@ -1419,6 +1505,7 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
   const [tab,setTab]=useState("buy");
   const rootRef=useRef(null);
   useArrowNav(rootRef);
+  const bodyRef=useRef(null);
   const [notice,setNotice]=useState("");
   const notify=msg=>{setNotice(msg);setTimeout(()=>setNotice(""),2500);};
   const eq=heroState.equipped||{};
@@ -1480,7 +1567,8 @@ function ArmourerDialogue({building,heroState,setHeroState,onDismiss}){
               style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+        <div ref={bodyRef} style={{flex:1,overflowY:"auto",padding:"10px 12px",position:"relative"}}>
+          <ScrollThumb scrollRef={bodyRef}/>
           {tab==="buy"&&armourItems.map(item=>{const can=heroState.gold>=item.cost;return(
             <div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 9px",marginBottom:5,borderRadius:3,background:can?"#1f1a11":"#130f0a",border:`1px solid ${C.border}`,opacity:can?1:0.5}}>
               <div style={{flex:1}}><div style={{fontSize:11,color:C.text}}>{item.name}</div><div style={{fontSize:9,color:C.dim}}>{item.strBonus!=null?`+${item.strBonus} str`:``}{item.armourBonus!=null?`+${item.armourBonus} armour`:``}{item.twoHanded?" · both hands":""}</div></div>
@@ -1517,6 +1605,7 @@ function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onD
   const [tab,setTab]=useState("buy");
   const rootRef=useRef(null);
   useArrowNav(rootRef);
+  const bodyRef=useRef(null);
   const inv=heroState.inventory||[];
   const eq=heroState.equipped||{};
   const [scrollMsg,setScrollMsg]=useState(null);
@@ -1562,7 +1651,8 @@ function MagicShopDialogue({building,heroState,setHeroState,hasMap,setHasMap,onD
               style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+        <div ref={bodyRef} style={{flex:1,overflowY:"auto",padding:"10px 12px",position:"relative"}}>
+          <ScrollThumb scrollRef={bodyRef}/>
           {tab==="buy"&&MAGIC_FORMS_LIST.map(form=><React.Fragment key={form}>
             <div style={{color:C.dim,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5,marginTop:8}}>{"⚡🧪💍"[MAGIC_FORMS_LIST.indexOf(form)]} {form}s</div>
             {MAGIC_TYPES_LIST.filter(type=>magicTier(type,form)<=5).map(type=>{const price=MAGIC_BASE[form]*MAGIC_MULT[type];const can=heroState.gold>=price;return(
@@ -1670,6 +1760,7 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,set
   const [tab,setTab]=useState("buy");
   const rootRef=useRef(null);
   useArrowNav(rootRef);
+  const bodyRef=useRef(null);
   const inv=heroState.inventory||[];
   const buy=(item)=>{
     if(heroState.gold<item.price&&heroState.gold<item.cost) return;
@@ -1713,7 +1804,8 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,set
               style={{flex:1,padding:"7px",textAlign:"center",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",color:tab===t?C.gold:C.dim,background:tab===t?C.panel:"#130f0a",borderBottom:tab===t?`2px solid ${C.gold}`:"2px solid transparent"}}>{l}</div>
           ))}
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+        <div ref={bodyRef} style={{flex:1,overflowY:"auto",padding:"10px 12px",position:"relative"}}>
+          <ScrollThumb scrollRef={bodyRef}/>
           {tab==="buy"&&(stock.length===0?<div style={{color:C.dim,fontStyle:"italic",fontSize:12,padding:10}}>Sold out!</div>:
             stock.map(item=>{const price=item.price||item.cost;const can=heroState.gold>=price;const col=item.type==="magic"?(item.color||"#9b59b6"):"#e8dcc8";return(
               <div key={item.uid} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:5,borderRadius:4,background:can?"#1f1a11":"#130f0a",border:`1px solid ${C.border}`,opacity:can?1:0.5}}>
@@ -1806,6 +1898,7 @@ function MerchantDialogue({stock,setStock,heroState,setHeroState,groundItems,set
 
 // ── Arena Dialogue ────────────────────────────────────────────────────────────
 function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
+  const bodyRef=useRef(null);
 
   function makeChallenger(maxLevel){
     // Pick a random monster at or below maxLevel
@@ -1922,7 +2015,8 @@ function ArenaDialogue({heroState,setHeroState,onDismiss,addLog}){
           <div style={{padding:"8px 14px",color:C.dim,fontSize:11,borderBottom:"1px solid #3d1818",flexShrink:0}}>
             Defeat challengers to earn gold. Each victory brings a harder replacement.
           </div>
-          <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+          <div ref={bodyRef} style={{flex:1,overflowY:"auto",padding:"10px 12px",position:"relative"}}>
+            <ScrollThumb scrollRef={bodyRef}/>
             {slots.map((slot,i)=>{
               const mon=slot.challenger;
               const diff=mon.level-heroLevel;
@@ -2052,8 +2146,9 @@ export function HeroPanel({heroState,setHeroState,C,btnS,INV_MAX,totalArmour,wea
   };
   return(
     <div ref={rootRef} style={{background:"#1a1510",border:`1px solid ${C.border}`,borderRight:"none",
-      padding:"10px 12px",width:185,maxHeight:"85vh",overflowY:"auto",
+      padding:"10px 12px",width:185,maxHeight:"85vh",overflowY:"auto",position:"relative",
       display:"flex",flexDirection:"column",gap:8}}>
+      <ScrollThumb scrollRef={rootRef}/>
 
       <div>
         <div style={{color:C.gold,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>Stats</div>
@@ -2168,6 +2263,7 @@ export function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setG
   const C2=C; // alias
   const rootRef=useRef(null);
   useArrowNav(rootRef);
+  const bodyRef=useRef(null);
   const eq=heroState.equipped||{};
 
   const takeAll=()=>{
@@ -2235,7 +2331,8 @@ export function GroundItemsDialogue({items,groundKey,heroState,setHeroState,setG
           <div style={{color:C2.gold,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase"}}>Items on the Ground</div>
           <div style={{color:C2.dim,fontSize:10,marginTop:2}}>You find something here...</div>
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"10px 14px"}}>
+        <div ref={bodyRef} style={{flex:1,overflowY:"auto",padding:"10px 14px",position:"relative"}}>
+          <ScrollThumb scrollRef={bodyRef}/>
           {gold>0&&(
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",marginBottom:6,borderRadius:4,background:"#1f1a08",border:`1px solid ${C2.border}`}}>
               <span style={{fontSize:18}}>💰</span>
